@@ -139,3 +139,24 @@ cost_final = cost_gen + cost_def + cost_spl
 set_optimizer(model, Gurobi.Optimizer)
 set_silent(model)
 ADL.build(model)
+
+# Y data as dict
+Y_dict_train = Dict(
+    demand[i] => Y_train[:,i] for i=1:pd.n_demand
+)
+Y_dict_test = Dict(
+    demand[i] => Y_test[:,i] for i=1:pd.n_demand
+)
+for i=1:pd.n_zones
+    Y_dict_train[res_up[i]] = Y_train[:,pd.n_demand+i]
+    Y_dict_train[res_dn[i]] = Y_train[:,pd.n_demand+pd.n_zones+i]
+    Y_dict_test[res_up[i]] = Y_test[:,pd.n_demand+i]
+    Y_dict_test[res_dn[i]] = Y_test[:,pd.n_demand+pd.n_zones+i]
+end
+
+# create input_output_map for predictive model
+input_output_map = Vector{Dict{Vector{Int64}, Vector{ApplicationDrivenLearning.Forecast}}}()
+for i=1:pd.n_demand
+    push!(input_output_map, Dict(collect(lags*(i-1)+1:lags*i) => [demand[i]]))
+end
+push!(input_output_map, Dict([lags*pd.n_demand+1] => vcat(res_up, res_dn)))

@@ -53,15 +53,16 @@ function pretrain_model(X, C, epochs=500, lr=1e-2, batchsize=32, verbose=true)
 end
 
 function get_solution(optmodel, X, C)
-    costs = zeros(size(C, 1))
-    preds = zeros(size(C))
-    solutions = zeros(size(C))
+    costs = zeros(size(X, 1))
+    preds = zeros((size(X, 1), length(C)))
+    solutions = zeros((size(X, 1), length(C)))
     for i=1:size(X, 1)
-        c = ApplicationDrivenLearning.compute_cost(optmodel, X[[i], :], C[[i], :])
+        iC = Dict(f => [v[i]] for (f,v) in C)
+        c = ApplicationDrivenLearning.compute_cost(optmodel, X[[i], :], iC)
         pred = optmodel.forecast(X[[i], :]')
         sol = value.(ApplicationDrivenLearning.assess_policy_vars(optmodel))
         costs[i] = c
-        preds[i, :] .= pred
+        preds[i, :] .= pred[optmodel.forecast_vars].data
         solutions[i, :] .= sol
     end
     return costs, preds, solutions
@@ -98,12 +99,16 @@ reg = pretrain_model(x_train, c_train)
 optmodel = get_optmodel(W, caps);
 ApplicationDrivenLearning.set_forecast_model(optmodel, reg);
 
-ls_cost_train = ApplicationDrivenLearning.compute_cost(optmodel, x_train, c_train, false, false)
-ls_cost_test = ApplicationDrivenLearning.compute_cost(optmodel, x_test, c_test, false, false)
+# y dicts
+y_train = Dict(f => c_train[:, i] for (i, f) in enumerate(optmodel.forecast_vars))
+y_test = Dict(f => c_test[:, i] for (i, f) in enumerate(optmodel.forecast_vars))
+
+ls_cost_train = ApplicationDrivenLearning.compute_cost(optmodel, x_train, y_train, false, false)
+ls_cost_test = ApplicationDrivenLearning.compute_cost(optmodel, x_test, y_test, false, false)
 
 # train with nelder mead
 nm_sol = ApplicationDrivenLearning.train!(
-    optmodel, x_train, c_train,
+    optmodel, x_train, y_train,
     ApplicationDrivenLearning.Options(
         ApplicationDrivenLearning.NelderMeadMode,
         iterations=1_000,
@@ -114,12 +119,12 @@ nm_sol = ApplicationDrivenLearning.train!(
 )
 
 # get test costs
-test_costs, test_predictions, test_solutions = get_solution(optmodel, x_test, c_test)
+test_costs, test_predictions, test_solutions = get_solution(optmodel, x_test, y_test)
 
 # get optimal costs
 opt_costs = zeros(size(c_test, 1))
 for i=1:size(x_test, 1)
-    y = c_test[i, :]
+    y = ApplicationDrivenLearning.VariableIndexedVector(c_test[i, :], optmodel.forecast_vars)
     opt_costs[i] = ApplicationDrivenLearning.compute_single_step_cost(optmodel, y, y)
 end
 test_cost_df = DataFrame(

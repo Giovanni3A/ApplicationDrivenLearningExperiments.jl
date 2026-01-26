@@ -14,7 +14,7 @@ import Distributions
 import JLD2
 using DataFrames
 import CSV
-using ApplicationDrivenLearning
+using .ApplicationDrivenLearning
 
 
 include("config.jl")
@@ -37,36 +37,32 @@ models_state = JLD2.load(pretrained_model_state, "state")
 Flux.loadmodel!(nns, models_state);
 pred_model = ADL.PredictiveModel(
     nns, 
-    input_output_map, 
-    lags*pd.n_demand+1, 
-    pd.n_demand+2*pd.n_zones
+    input_output_map
 )
 ADL.set_forecast_model(
     model,
-    deepcopy(pred_model)
+    pred_model
 )
 ls_pred_train = model.forecast(X_train')'
-ls_cost_train = ADL.compute_cost(model, X_train, Y_train, false, false)
+ls_cost_train = ADL.compute_cost(model, X_train, Y_dict_train, false, false)
 ls_pred_test = model.forecast(X_test')'
-ls_cost_test = ADL.compute_cost(model, X_test, Y_test, false, false)
+ls_cost_test = ADL.compute_cost(model, X_test, Y_dict_test, false, false)
 
 # get GD model
 models_state = JLD2.load(gradient_model_state, "state")
 Flux.loadmodel!(nns, models_state);
 pred_model = ADL.PredictiveModel(
     nns, 
-    input_output_map, 
-    lags*pd.n_demand+1, 
-    pd.n_demand+2*pd.n_zones
+    input_output_map
 )
 ADL.set_forecast_model(
     model,
-    deepcopy(pred_model)
+    pred_model
 )
 gd_pred_train = model.forecast(X_train')'
-gd_cost_train = ADL.compute_cost(model, X_train, Y_train, false, false)
+gd_cost_train = ADL.compute_cost(model, X_train, Y_dict_train, false, false)
 gd_pred_test = model.forecast(X_test')'
-gd_cost_test = ADL.compute_cost(model, X_test, Y_test, false, false)
+gd_cost_test = ADL.compute_cost(model, X_test, Y_dict_test, false, false)
 
 # get NM model
 nm_condition = (N_HIDDEN_LAYERS == 0) && (N_DEMANDS <= 100)
@@ -75,33 +71,39 @@ if nm_condition
     Flux.loadmodel!(nns, models_state);
     pred_model = ADL.PredictiveModel(
         nns, 
-        input_output_map, 
-        lags*pd.n_demand+1, 
-        pd.n_demand+2*pd.n_zones
+        input_output_map
     )
     ADL.set_forecast_model(
         model,
-        deepcopy(pred_model)
+        pred_model
     )
     nm_pred_train = model.forecast(X_train')'
-    nm_cost_train = ADL.compute_cost(model, X_train, Y_train, false, false)
+    nm_cost_train = ADL.compute_cost(model, X_train, Y_dict_train, false, false)
     nm_pred_test = model.forecast(X_test')'
-    nm_cost_test = ADL.compute_cost(model, X_test, Y_test, false, false)
+    nm_cost_test = ADL.compute_cost(model, X_test, Y_dict_test, false, false)
 end
 
 # get optimal decision
 opt_cost_train = []
 for t=1:TRAIN_SIZE
+    t_y = ApplicationDrivenLearning.VariableIndexedVector(
+        [Y_dict_train[f][t] for f in model.forecast_vars],
+        model.forecast_vars
+    )
     push!(
         opt_cost_train,
-        ADL.compute_single_step_cost(model, Y_train[t, :], Y_train[t, :])
+        ADL.compute_single_step_cost(model, t_y, t_y)
     )
 end
 opt_cost_test = []
 for t=1:TEST_SIZE
+    t_y = ApplicationDrivenLearning.VariableIndexedVector(
+        [Y_dict_test[f][t] for f in model.forecast_vars],
+        model.forecast_vars
+    )
     push!(
         opt_cost_test,
-        ADL.compute_single_step_cost(model, Y_test[t, :], Y_test[t, :])
+        ADL.compute_single_step_cost(model, t_y, t_y)
     )
 end
 
@@ -204,13 +206,11 @@ models_state = JLD2.load(pretrained_model_state, "state")
 Flux.loadmodel!(nns, models_state);
 pred_model = ADL.PredictiveModel(
     nns, 
-    input_output_map, 
-    lags*pd.n_demand+1, 
-    pd.n_demand+2*pd.n_zones
+    input_output_map
 )
 ADL.set_forecast_model(
     model,
-    deepcopy(pred_model)
+    pred_model
 )
 dataframe = DataFrame(
     data=String[],
@@ -221,7 +221,8 @@ dataframe = DataFrame(
     cost_total=Float64[],
 )
 for t=1:TRAIN_SIZE
-    cost_total = ADL.compute_cost(model, X_train[[t], :], Y_train[[t], :])
+    t_y = Dict(f => [v[t]] for (f,v) in Y_dict_train)
+    cost_total = ADL.compute_cost(model, X_train[[t], :], t_y)
     push!(dataframe, (
         "train",
         t,
@@ -232,7 +233,8 @@ for t=1:TRAIN_SIZE
     ))
 end
 for t=1:TEST_SIZE
-    cost_total = ADL.compute_cost(model, X_test[[t], :], Y_test[[t], :])
+    t_y = Dict(f => [v[t]] for (f,v) in Y_dict_test)
+    cost_total = ADL.compute_cost(model, X_test[[t], :], t_y)
     push!(dataframe, (
         "test",
         t,

@@ -12,7 +12,9 @@ import NNlib
 import Distributions
 import JLD2
 import JobQueueMPI
-using ApplicationDrivenLearning
+
+include("/home/ec2-user/ApplicationDrivenLearning.jl_DEV/src/ApplicationDrivenLearning.jl")
+using .ApplicationDrivenLearning
 
 JQM = JobQueueMPI
 
@@ -25,13 +27,11 @@ include("utils/pretrain.jl")
 # least-squares model
 pred_model = ADL.PredictiveModel(
     nns, 
-    input_output_map, 
-    lags*pd.n_demand+1, 
-    pd.n_demand+2*pd.n_zones
+    input_output_map 
 )
 ADL.set_forecast_model(
     model,
-    deepcopy(pred_model)
+    pred_model
 )
 
 ls_pred = model.forecast(X_train')'
@@ -44,7 +44,7 @@ if gradient_mode
     sol = ApplicationDrivenLearning.train!(
         model,
         X_train,
-        Y_train,
+        Y_dict_train,
         ApplicationDrivenLearning.Options(
             ApplicationDrivenLearning.GradientMPIMode;
             rule=Flux.Adam(LEARNING_RATE), 
@@ -60,7 +60,7 @@ if gradient_mode
 
         gd_pred = model.forecast(X_train')'
         gd_mse = sum((gd_pred' .- Y_train') .^2, dims=1) |> mean
-        gd_cost = ADL.compute_cost(model, X_train, Y_train)
+        gd_cost = ADL.compute_cost(model, X_train, Y_dict_train)
 
         println("OPT-GD MSE: $gd_mse")
         println("OPT-GD: $gd_cost")
@@ -72,7 +72,7 @@ elseif neldermead_mode
     sol = ApplicationDrivenLearning.train!(
         model,
         X_train,
-        Y_train,
+        Y_dict_train,
         ApplicationDrivenLearning.Options(
             ApplicationDrivenLearning.NelderMeadMPIMode;
             iterations=N_EPOCHS, 
@@ -88,7 +88,7 @@ elseif neldermead_mode
 
         nm_pred = model.forecast(X_train')'
         nm_mse = sum((nm_pred' .- Y_train') .^2, dims=1) |> mean  # 1247.29
-        nm_cost = ADL.compute_cost(model, X_train, Y_train)  # 6288.93
+        nm_cost = ADL.compute_cost(model, X_train, Y_dict_train)  # 6288.93
 
         println("OPT-NM MSE: $nm_mse")
         println("OPT-NM: $nm_cost")
