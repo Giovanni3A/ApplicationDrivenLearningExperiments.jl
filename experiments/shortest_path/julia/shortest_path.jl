@@ -59,7 +59,7 @@ function get_solution(optmodel, X, C)
         pred = optmodel.forecast(X[[i], :]')
         sol = value.(ApplicationDrivenLearning.assess_policy_vars(optmodel))
         costs[i] = c
-        preds[i, :] .= pred[optmodel.forecast_vars].data
+        preds[i, :] .= pred
         solutions[i, :] .= sol
     end
     return costs, preds, solutions
@@ -179,7 +179,7 @@ costs, preds, solutions = get_solution(optmodel, x_test, y_test)
 # get optimal costs
 opt_costs = zeros(size(c_test, 1))
 for i=1:size(x_test, 1)
-    y = ApplicationDrivenLearning.VariableIndexedVector(c_test[i, :], optmodel.forecast_vars)
+    y = c_test[i, :]
     opt_costs[i] = ApplicationDrivenLearning.compute_single_step_cost(optmodel, y, y)
 end
 test_cost_df = DataFrame(
