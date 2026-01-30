@@ -13,8 +13,7 @@ import Distributions
 import JLD2
 import JobQueueMPI
 
-include("/home/ec2-user/ApplicationDrivenLearning.jl_DEV/src/ApplicationDrivenLearning.jl")
-using .ApplicationDrivenLearning
+using ApplicationDrivenLearning
 
 JQM = JobQueueMPI
 

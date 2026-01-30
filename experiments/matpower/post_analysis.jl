@@ -14,7 +14,7 @@ import Distributions
 import JLD2
 using DataFrames
 import CSV
-using .ApplicationDrivenLearning
+using ApplicationDrivenLearning
 
 
 include("config.jl")
@@ -86,10 +86,7 @@ end
 # get optimal decision
 opt_cost_train = []
 for t=1:TRAIN_SIZE
-    t_y = ApplicationDrivenLearning.VariableIndexedVector(
-        [Y_dict_train[f][t] for f in model.forecast_vars],
-        model.forecast_vars
-    )
+    t_y = Y_train[t, :]
     push!(
         opt_cost_train,
         ADL.compute_single_step_cost(model, t_y, t_y)
@@ -97,10 +94,7 @@ for t=1:TRAIN_SIZE
 end
 opt_cost_test = []
 for t=1:TEST_SIZE
-    t_y = ApplicationDrivenLearning.VariableIndexedVector(
-        [Y_dict_test[f][t] for f in model.forecast_vars],
-        model.forecast_vars
-    )
+    t_y = Y_test[t, :]
     push!(
         opt_cost_test,
         ADL.compute_single_step_cost(model, t_y, t_y)

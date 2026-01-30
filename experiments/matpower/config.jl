@@ -1,6 +1,6 @@
 # this config file is used to set the parameters for the experiment
 
-run_mode = 2  # 1: pretrain, 2: gradient, 3: neldermead
+run_mode = 1  # 1: pretrain, 2: gradient, 3: neldermead
 
 pretrain = false
 gradient_mode = false
@@ -30,7 +30,7 @@ TRAIN_SIZE = 1200
 TEST_SIZE = 1200
 SIM_SLICES = 3 * 64
 TRASMISSION_REDUCTION = 1
-N_PROCS = 3
+N_PROCS = 13
 
 model_type = 3  # 1: univariate, 2: multivariate, 3: many-univariate
 N_HIDDEN_LAYERS = 0
