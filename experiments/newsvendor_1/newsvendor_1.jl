@@ -63,6 +63,9 @@ build_nesvendor_jump_model(ApplicationDrivenLearning.Assess(model), [i.assess fo
 set_optimizer(model, Gurobi.Optimizer)
 set_silent(model)
 
+# transform Y into dictionary
+Y = Dict(d[i] => Y[:,i] for i=1:I)
+
 # declare predictive model
 nn = Flux.Chain(
     Flux.Dense(p => 1)
@@ -88,7 +91,8 @@ yhat_opt = model.forecast(X')'
 cost_opt = ApplicationDrivenLearning.compute_cost(model, X, Y)
 
 # compare predictions
-fig1 = plot(Y, label="True", color=:grey, title="Newsvendor Demand", xlabel="Timesteps")
+y_real = reduce(hcat, [Y[d[i]] for i=1:I])
+fig1 = plot(y_real, label="True", color=:grey, title="Newsvendor Demand", xlabel="Timesteps")
 plot!(yhat_ls, label="LS")
 plot!(yhat_opt, label="Opt")
 savefig(fig1, joinpath(IMGS_PATH, "demand.png"))
@@ -96,7 +100,7 @@ savefig(fig1, joinpath(IMGS_PATH, "demand.png"))
 # compare errors
 bins = -30:5:30
 fig2 = histogram(
-    (yhat_ls .- Y),
+    (yhat_ls .- y_real),
     alpha=.7 ,
     bins=bins,
     label="LS (Cost=$(round(cost_ls, digits=2)))", 
@@ -104,7 +108,7 @@ fig2 = histogram(
     xlabel="Timesteps"
 )
 histogram!(
-    (yhat_opt .- Y), 
+    (yhat_opt .- y_real), 
     alpha=.7,
     bins=bins,
     label="Opt (Cost=$(round(cost_opt, digits=2)))"

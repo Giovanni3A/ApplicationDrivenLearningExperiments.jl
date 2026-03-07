@@ -102,6 +102,9 @@ build_nesvendor_jump_model(ApplicationDrivenLearning.Assess(model), [i.assess fo
 set_optimizer(model, Gurobi.Optimizer)
 set_silent(model)
 
+# transform Y into dictionary
+Y = Dict(d[i] => Y[:,i] for i=1:I)
+
 # declare predictive model
 nns = [
     Flux.Chain(Flux.Dense(p => 1))
@@ -113,7 +116,7 @@ for i=1:I
 end
 input_output_map = [
     Dict(
-        collect((i-1)*p+1:i*p) => [i]
+        collect((i-1)*p+1:i*p) => [d[i]]
     )
     for i=1:I
 ]
@@ -121,9 +124,7 @@ ApplicationDrivenLearning.set_forecast_model(
     model,
     ApplicationDrivenLearning.PredictiveModel(
         deepcopy(nns), 
-        input_output_map, 
-        size(X, 2),
-        size(Y, 2)
+        input_output_map
     )
 )
 
@@ -161,19 +162,20 @@ corr = [Statistics.cor(uncertainty[:, i], bias[:, i]) for i=1:I]
 
 # compare predictions
 MAX_TIMESTEPS_PLOT = 100
-fig1 = plot(Y[1:MAX_TIMESTEPS_PLOT, 1], label="True", color=:black, title="Newsvendor 1 Demand", xlabel="Timesteps")
-plot!(yhat_ls[1:MAX_TIMESTEPS_PLOT, 1], label="LS", color=:grey)
+fig1 = plot(Y[d[1]][1:MAX_TIMESTEPS_PLOT], label="True", color=:black, title="Newsvendor 1 Demand", xlabel="Timesteps")
+plot!(yhat_ls[1:MAX_TIMESTEPS_PLOT, 1], label="LS")
 plot!(yhat_opt[1:MAX_TIMESTEPS_PLOT, 1], label="Opt")
 savefig(fig1, joinpath(IMGS_PATH, "newsvendor_1_demand.png"))
 
-fig2 = plot(Y[1:MAX_TIMESTEPS_PLOT, 2], label="True", color=:black, title="Newsvendor 2 Demand", xlabel="Timesteps")
-plot!(yhat_ls[1:MAX_TIMESTEPS_PLOT, 2], label="LS", color=:grey)
+fig2 = plot(Y[d[2]][1:MAX_TIMESTEPS_PLOT], label="True", color=:black, title="Newsvendor 2 Demand", xlabel="Timesteps")
+plot!(yhat_ls[1:MAX_TIMESTEPS_PLOT, 2], label="LS")
 plot!(yhat_opt[1:MAX_TIMESTEPS_PLOT, 2], label="Opt")
 savefig(fig2, joinpath(IMGS_PATH, "newsvendor_2_demand.png"))
 
 # compare errors
-err_ls = (yhat_ls .- Y)
-err_opt = (yhat_opt .- Y)
+y_real = reduce(hcat, [Y[d[i]] for i=1:I])
+err_ls = (yhat_ls .- y_real)
+err_opt = (yhat_opt .- y_real)
 min_bin = minimum([minimum(err_ls), minimum(err_opt)])
 max_bin = maximum([maximum(err_ls), maximum(err_opt)])
 bins = min_bin:1:max_bin
@@ -182,8 +184,7 @@ fig3 = histogram(
     alpha=.7,
     bins=bins,
     label="LS", color=:grey,
-    title="Newsvendor 1 Error", 
-    xlabel="Timesteps"
+    title="Newsvendor 1 Error Histogram",
 )
 histogram!(
     err_opt[:, 1], 
@@ -198,8 +199,7 @@ fig4 = histogram(
     alpha=.7,
     bins=bins,
     label="LS", color=:grey, 
-    title="Newsvendor 2 Error", 
-    xlabel="Timesteps"
+    title="Newsvendor 2 Error Histogram", 
 )
 histogram!(
     err_opt[:, 2], 

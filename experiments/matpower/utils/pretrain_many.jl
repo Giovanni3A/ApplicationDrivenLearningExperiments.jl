@@ -1,6 +1,6 @@
 # predictive model
 
-nns = []
+nns = Vector{Flux.Chain}()
 if N_HIDDEN_LAYERS == 0
     for i=1:pd.n_demand
         reg = Flux.Chain(Flux.Dense(lags => 1))
@@ -27,11 +27,6 @@ else
     end
 end
 push!(nns, Flux.Chain(Flux.Dense(1 => 2*pd.n_zones; bias=false, ),))
-input_output_map = Vector{Dict{Vector{Int64}, Vector{Int64}}}()
-for i=1:pd.n_demand
-    push!(input_output_map, Dict(collect(lags*(i-1)+1:lags*i) => [i]))
-end
-push!(input_output_map, Dict([lags*pd.n_demand+1] => collect(pd.n_demand+1:pd.n_demand+2*pd.n_zones)))
 
 # fix nns[2] params
 Flux.params(nns[end][1])[1] .= Y_train[1,pd.n_demand+1:end]

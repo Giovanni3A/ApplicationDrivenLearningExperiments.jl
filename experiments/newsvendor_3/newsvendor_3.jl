@@ -37,6 +37,10 @@ for itry = 1:n_tries
         # init model
         model = init_newsvendor_model(I, Gurobi.Optimizer);
         ref_costs = nothing
+        
+        # Y dictionary
+        Y_dict_train = Dict(model.forecast_vars[i] => Y_train[:,i] for i=1:I)
+        Y_dict_test = Dict(model.forecast_vars[i] => Y_test[:,i] for i=1:I)
 
         for n_hidden_layers in n_hidden_layers_space
             # start model
@@ -84,21 +88,21 @@ for itry = 1:n_tries
             
             # set forecast model
             input_output_maps = [
-                Dict(collect((i-1)*p+1:i*p) => [i])
+                Dict(collect((i-1)*p+1:i*p) => [model.forecast_vars[i]])
                 for i=1:I
             ]
             forecaster = ApplicationDrivenLearning.PredictiveModel(
-                deepcopy(ls_nns), input_output_maps, p*I, I
+                deepcopy(ls_nns), input_output_maps
             )
             ApplicationDrivenLearning.set_forecast_model(model, forecaster)
 
             # ls prediction
             yhat_ls_train = model.forecast(X_train')'
             yerr_ls_train = sum((yhat_ls_train - Y_train).^2) / (I*T_train)
-            cost_ls_train = ApplicationDrivenLearning.compute_cost(model, X_train, Y_train)
+            cost_ls_train = ApplicationDrivenLearning.compute_cost(model, X_train, Y_dict_train)
             yhat_ls_test = model.forecast(X_test')'
             yerr_ls_test = sum((yhat_ls_test - Y_test).^2) / (I*T_test)
-            cost_ls_test = ApplicationDrivenLearning.compute_cost(model, X_test, Y_test)
+            cost_ls_test = ApplicationDrivenLearning.compute_cost(model, X_test, Y_dict_test)
 
             # train with bilevel mode
             if (n_hidden_layers == 0) && (I < 300)
@@ -110,12 +114,12 @@ for itry = 1:n_tries
                 ApplicationDrivenLearning.set_forecast_model(
                     model, 
                     ApplicationDrivenLearning.PredictiveModel(
-                        deepcopy(nns_without_activation), input_output_maps, p*I, I
+                        deepcopy(nns_without_activation), input_output_maps
                     )
                 )
                 t0 = time()
                 bl_sol = ApplicationDrivenLearning.train!(
-                    model, X_train, Y_train,
+                    model, X_train, Y_dict_train,
                     ApplicationDrivenLearning.Options(
                         ApplicationDrivenLearning.BilevelMode,
                         optimizer=Gurobi.Optimizer,
@@ -131,7 +135,7 @@ for itry = 1:n_tries
                     ApplicationDrivenLearning.set_forecast_model(
                         model, 
                         ApplicationDrivenLearning.PredictiveModel(
-                            deepcopy(nns_with_activation), input_output_maps, p*I, I
+                            deepcopy(nns_with_activation), input_output_maps
                         )
                     )
                 end
@@ -139,10 +143,10 @@ for itry = 1:n_tries
                 time_bl = time() - t0
                 yhat_bl_train = model.forecast(X_train')'
                 yerr_bl_train = sum((yhat_bl_train - Y_train).^2) / (I*T_train)
-                cost_bl_train = ApplicationDrivenLearning.compute_cost(model, X_train, Y_train)
+                cost_bl_train = ApplicationDrivenLearning.compute_cost(model, X_train, Y_dict_train)
                 yhat_bl_test = model.forecast(X_test')'
                 yerr_bl_test = sum((yhat_bl_test - Y_test).^2) / (I*T_test)
-                cost_bl_test = ApplicationDrivenLearning.compute_cost(model, X_test, Y_test)
+                cost_bl_test = ApplicationDrivenLearning.compute_cost(model, X_test, Y_dict_test)
             else
                 time_bl = NaN
                 yerr_bl_train = NaN
@@ -158,12 +162,12 @@ for itry = 1:n_tries
                 ApplicationDrivenLearning.set_forecast_model(
                     model, 
                     ApplicationDrivenLearning.PredictiveModel(
-                        deepcopy(ls_nns), input_output_maps, p*I, I
+                        deepcopy(ls_nns), input_output_maps
                     )
                 )
                 t0 = time()
                 nm_sol = ApplicationDrivenLearning.train!(
-                    model, X_train, Y_train,
+                    model, X_train, Y_dict_train,
                     ApplicationDrivenLearning.Options(
                         ApplicationDrivenLearning.NelderMeadMode,
                         iterations=max_iter, 
@@ -176,10 +180,10 @@ for itry = 1:n_tries
                 time_nm = time() - t0
                 yhat_nm_train = model.forecast(X_train')'
                 yerr_nm_train = sum((yhat_nm_train - Y_train).^2) / (I*T_train)
-                cost_nm_train = ApplicationDrivenLearning.compute_cost(model, X_train, Y_train)
+                cost_nm_train = ApplicationDrivenLearning.compute_cost(model, X_train, Y_dict_train)
                 yhat_nm_test = model.forecast(X_test')'
                 yerr_nm_test = sum((yhat_nm_test - Y_test).^2) / (I*T_test)
-                cost_nm_test = ApplicationDrivenLearning.compute_cost(model, X_test, Y_test)
+                cost_nm_test = ApplicationDrivenLearning.compute_cost(model, X_test, Y_dict_test)
             else
                 time_nm = NaN
                 yerr_nm_train = NaN
@@ -194,7 +198,7 @@ for itry = 1:n_tries
             ApplicationDrivenLearning.set_forecast_model(
                 model, 
                 ApplicationDrivenLearning.PredictiveModel(
-                    deepcopy(ls_nns), input_output_maps, p*I, I
+                    deepcopy(ls_nns), input_output_maps
                 )
             )
             
@@ -209,7 +213,7 @@ for itry = 1:n_tries
             
             t0 = time()
             gd_sol = ApplicationDrivenLearning.train!(
-                model, X_train, Y_train,
+                model, X_train, Y_dict_train,
                 ApplicationDrivenLearning.Options(
                     ApplicationDrivenLearning.GradientMode,
                     rule=Flux.Adam(lr),
@@ -223,10 +227,10 @@ for itry = 1:n_tries
             time_gd = time() - t0
             yhat_gd_train = model.forecast(X_train')'
             yerr_gd_train = sum((yhat_gd_train - Y_train).^2) / (I*T_train)
-            cost_gd_train = ApplicationDrivenLearning.compute_cost(model, X_train, Y_train)
+            cost_gd_train = ApplicationDrivenLearning.compute_cost(model, X_train, Y_dict_train)
             yhat_gd_test = model.forecast(X_test')'
             yerr_gd_test = sum((yhat_gd_test - Y_test).^2) / (I*T_test)
-            cost_gd_test = ApplicationDrivenLearning.compute_cost(model, X_test, Y_test)
+            cost_gd_test = ApplicationDrivenLearning.compute_cost(model, X_test, Y_dict_test)
 
             push!(rows, (
                 itry, I,

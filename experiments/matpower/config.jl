@@ -19,7 +19,7 @@ else
     error("Invalid option")
 end
 
-CASE_NAME = "pglib_opf_case588_sdet"
+CASE_NAME = "pglib_opf_case24_ieee_rts"
 N_LAGS = 1
 N_DEMANDS = Int(round(parse(Int, CASE_NAME[findall(r"\d+", CASE_NAME)[1]]) / 2))
 N_ZONES = 10

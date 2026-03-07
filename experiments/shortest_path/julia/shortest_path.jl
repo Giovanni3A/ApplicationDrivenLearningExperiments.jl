@@ -50,11 +50,12 @@ function pretrain_model(X, C, epochs=100, lr=1e-2, batchsize=32, verbose=true)
 end
 
 function get_solution(optmodel, X, C)
-    costs = zeros(size(C, 1))
-    preds = zeros(size(C))
-    solutions = zeros(size(C))
+    costs = zeros(size(X, 1))
+    preds = zeros((size(X, 1), length(C)))
+    solutions = zeros((size(X, 1), length(C)))
     for i=1:size(X, 1)
-        c = ApplicationDrivenLearning.compute_cost(optmodel, X[[i], :], C[[i], :])
+        iC = Dict(f => [v[i]] for (f,v) in C)
+        c = ApplicationDrivenLearning.compute_cost(optmodel, X[[i], :], iC)
         pred = optmodel.forecast(X[[i], :]')
         sol = value.(ApplicationDrivenLearning.assess_policy_vars(optmodel))
         costs[i] = c
@@ -152,12 +153,16 @@ reg = pretrain_model(x_train, c_train)
 optmodel = get_optmodel(c_train);
 ApplicationDrivenLearning.set_forecast_model(optmodel, reg);
 
-ls_cost_train = ApplicationDrivenLearning.compute_cost(optmodel, x_train, c_train, false, false)
-ls_cost_test = ApplicationDrivenLearning.compute_cost(optmodel, x_test, c_test, false, false)
+# y dicts
+y_train = Dict(f => c_train[:, i] for (i, f) in enumerate(optmodel.forecast_vars))
+y_test = Dict(f => c_test[:, i] for (i, f) in enumerate(optmodel.forecast_vars))
+
+ls_cost_train = ApplicationDrivenLearning.compute_cost(optmodel, x_train, y_train, false, false)
+ls_cost_test = ApplicationDrivenLearning.compute_cost(optmodel, x_test, y_test, false, false)
 
 # train with nelder mead
 nm_sol = ApplicationDrivenLearning.train!(
-    optmodel, x_train, c_train,
+    optmodel, x_train, y_train,
     ApplicationDrivenLearning.Options(
         ApplicationDrivenLearning.NelderMeadMode,
         initial_simplex=Optim.AffineSimplexer(0.9, 0.1),
@@ -169,7 +174,7 @@ nm_sol = ApplicationDrivenLearning.train!(
 )
 
 # get solution
-costs, preds, solutions = get_solution(optmodel, x_test, c_test)
+costs, preds, solutions = get_solution(optmodel, x_test, y_test)
 
 # get optimal costs
 opt_costs = zeros(size(c_test, 1))
