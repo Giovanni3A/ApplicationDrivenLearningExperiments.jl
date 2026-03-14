@@ -3,10 +3,18 @@
 # ============================================================================
 # Run Matpower experiments
 # ============================================================================
-echo ""
-echo "=== Running Matpower Experiments ==="
-echo "[INFO] Running script: experiments/matpower/auto_run.jl"
+
+box() {
+    local msg="$1"
+    local len=${#msg}
+    local line=$(printf '%*s' "$((len + 2))" | tr ' ' '-')
+    echo "+${line}+"
+    echo "| ${msg} |"
+    echo "+${line}+"
+}
+
+box "Running Matpower Experiments"
+box "[INFO] Running script: experiments/matpower/auto_run.jl"
 julia --project=. experiments/matpower/auto_run.jl
 
-echo "[SUCCESS] Matpower experiments completed."
-
+box "[SUCCESS] Matpower experiments completed."
