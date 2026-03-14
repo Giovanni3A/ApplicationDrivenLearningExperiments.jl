@@ -19,7 +19,7 @@ To run all experiments automatically:
 
 ```bash
 # Navigate to the project directory
-cd /path/to/ApplicationDrivenLearning.jl
+cd /path/to/ApplicationDrivenLearningExperiments.jl
 
 # Make the main script executable (if not already)
 chmod +x main.sh
@@ -43,7 +43,7 @@ The script will automatically:
 #### Step 1: Navigate to Project Directory
 
 ```bash
-cd /path/to/ApplicationDrivenLearning.jl
+cd /path/to/ApplicationDrivenLearningExperiments.jl
 ```
 
 #### Step 2: Make Scripts Executable
@@ -188,10 +188,19 @@ If a script fails, check the error message. Common issues:
 
 ### Expected Output
 
-The scripts provide detailed output with status messages:
-- `[INFO]` - Informational messages
-- `[SUCCESS]` - Successful operations
-- `[ERROR]` - Error messages (script will exit on errors)
+The scripts provide detailed output with status messages in ASCII boxes:
+
+```
++----------------------------------+
+| [INFO] Some informational message |
++----------------------------------+
++-----------------------------+
+| [SUCCESS] Operation complete |
++-----------------------------+
++----------------------------+
+| [ERROR] Something went wrong |
++----------------------------+
+```
 
 ### Notes
 
@@ -223,7 +232,7 @@ root/
 │   │   ├─ data/ # data folder
 │   │   │   ├─ input/ # (x,y) input data
 │   │   │   ├─ pyepo_result/ # results from PyEPO
-│   │   │   └─ adl_resul/ # results from ApplicationDrivenLearning
+│   │   │   └─ adl_result/ # results from ApplicationDrivenLearning
 │   │   ├─ python/ # python scripts for data generation and PyEPO execution
 │   │   ├─ julia/
 |   │   │   ├─ shortest_path.jl # ApplicationDrivenLearning execution
@@ -232,10 +241,10 @@ root/
 │   │   ├─ data/ # data folder
 │   │   │   ├─ input/ # (x,y) input data
 │   │   │   ├─ pyepo_result/ # results from PyEPO
-│   │   │   └─ adl_resul/ # results from ApplicationDrivenLearning
+│   │   │   └─ adl_result/ # results from ApplicationDrivenLearning
 │   │   ├─ python/ # python scripts for data generation and PyEPO execution
 │   │   ├─ julia/
-|   │   │   ├─ shortest_path.jl # ApplicationDrivenLearning execution
+|   │   │   ├─ knapsack.jl # ApplicationDrivenLearning execution
 |   │   │   └─ post_analysis.jl # final plots generation
 │   ├─ matpower/
 │   │   ├─ data/ # data folder
@@ -254,11 +263,11 @@ root/
 
 Simple multistep newsvendor problem with AR-1 process timeseries. Applies least-squares methodology with BilevelMode and shows difference between ls and opt on in-sample prediction, prediction error and assessed cost.
 
-### Nesvendor 2
+### Newsvendor 2
 
 Uses same basic nesvendor problem, but with 2 timeseries representing 2 different newsvendor instances, with different cost parameters and AR-3 processes for timeseries generation. This shows how to use `input_output_map` to apply the same predictive model for multiple prediction decision variables. 
 
-### Nesvendor 3
+### Newsvendor 3
 
 Applies multistep newsvendor on multiple problem scales. In this experiment, we compare performance for increasing number of predictive model parameters, with results indicating that GradientMode eventually becomes a better alternative than NelderMeadMode and BilevelMode for big problems.
 
