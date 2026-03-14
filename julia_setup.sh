@@ -17,7 +17,7 @@ box "Checking Julia Installation"
 if ! command -v julia &> /dev/null; then
     box "[INFO] Julia not found. Installing Julia..."
     # Install Julia using official method for Amazon Linux
-    curl -fsSL https://install.julialang.org | sh
+    curl -fsSL https://install.julialang.org | sh -s -- --yes
     # Add Julia to PATH for current session
     export PATH="$HOME/.juliaup/bin:$PATH"
     # Verify installation
