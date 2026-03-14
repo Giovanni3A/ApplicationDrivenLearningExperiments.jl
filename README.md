@@ -10,8 +10,9 @@ This section provides step-by-step instructions for running the experiments on L
 
 - **Linux operating system** (tested on Amazon Linux 2023, but should work on most Linux distributions)
 - **Internet connection** (required for downloading Julia, Python packages, and dependencies)
-- **Sudo access** (required for installing Python3 if not already installed)
+- **Sudo access** (required for installing Python3 and OpenMPI if not already installed)
 - **Sufficient disk space** (recommended: at least 10GB free space)
+- **Gurobi license** (required — see [Gurobi License Setup](#gurobi-license-setup) below)
 
 ### Quick Start
 
@@ -107,6 +108,28 @@ If you want to run specific experiments only, you can run the individual scripts
 ```
 
 **Note:** For Knapsack and Shortest Path experiments, make sure to run `python_setup.sh` first to set up the Python virtual environment, as these experiments require Python dependencies.
+
+### Gurobi License Setup
+
+All experiments use [Gurobi](https://www.gurobi.com/) as the optimization solver. **Without a valid license, the experiments will not run.**
+
+#### Using a WLS (Web License Service) license — recommended for AWS
+
+Create a `gurobi.lic` file in your home directory (`$HOME/gurobi.lic`) with the following content:
+
+```
+WLSACCESSID=your-access-id
+WLSSECRET=your-secret
+LICENSEID=your-license-id
+```
+
+You can obtain these credentials from the [Gurobi User Portal](https://portal.gurobi.com). WLS licenses work on cloud environments like AWS.
+
+> **Note:** Standard academic licenses do NOT work on cloud VMs — you must use a WLS license on AWS.
+
+#### Running without Gurobi
+
+If you do not have a Gurobi license, you can substitute a different solver (e.g., HiGHS, GLPK) by manually changing `Gurobi.Optimizer` to your solver of choice in the experiment scripts. This requires code changes and is not officially supported.
 
 ### What the Scripts Do
 
