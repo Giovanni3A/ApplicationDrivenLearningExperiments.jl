@@ -3,23 +3,29 @@
 # ============================================================================
 # Run Julia Newsvendor experiments
 # ============================================================================
-echo ""
-echo "=== Starting Julia Newsvendor Experiments ==="
-echo ""
+
+box() {
+    local msg="$1"
+    local len=${#msg}
+    local line=$(printf '%*s' "$((len + 2))" | tr ' ' '-')
+    echo "+${line}+"
+    echo "| ${msg} |"
+    echo "+${line}+"
+}
+
+box "Starting Julia Newsvendor Experiments"
 
 # Run newsvendor_2.jl script
-echo "[INFO] Running script: experiments/newsvendor_2/newsvendor_2.jl"
+box "[INFO] Running script: experiments/newsvendor_2/newsvendor_2.jl"
 julia --project=. experiments/newsvendor_2/newsvendor_2.jl
 
 # Run newsvendor_3.jl script
-echo "[INFO] Running script: experiments/newsvendor_3/newsvendor_3.jl"
+box "[INFO] Running script: experiments/newsvendor_3/newsvendor_3.jl"
 julia --project=. experiments/newsvendor_3/newsvendor_3.jl
 
 # Run post-analysis for newsvendor_3
-echo ""
-echo "=== Running Newsvendor 3 Post-Analysis ==="
-echo "[INFO] Running script: experiments/newsvendor_3/post_analysis.jl"
+box "Running Newsvendor 3 Post-Analysis"
+box "[INFO] Running script: experiments/newsvendor_3/post_analysis.jl"
 julia --project=. experiments/newsvendor_3/post_analysis.jl
 
-echo "[SUCCESS] Newsvendor experiments completed."
-
+box "[SUCCESS] Newsvendor experiments completed."

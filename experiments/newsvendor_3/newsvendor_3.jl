@@ -232,7 +232,7 @@ for itry = 1:n_tries
             yerr_gd_test = sum((yhat_gd_test - Y_test).^2) / (I*T_test)
             cost_gd_test = ApplicationDrivenLearning.compute_cost(model, X_test, Y_dict_test)
 
-            push!(rows, (
+            push!(rows, [
                 itry, I,
                 n_hidden_layers, 
                 n_params, 
@@ -240,14 +240,14 @@ for itry = 1:n_tries
                 time_bl,yerr_bl_train,cost_bl_train,yerr_bl_test,cost_bl_test,
                 time_nm,yerr_nm_train,cost_nm_train,yerr_nm_test,cost_nm_test,
                 time_gd,yerr_gd_train,cost_gd_train,yerr_gd_test,cost_gd_test
-            ))
+            ])
 
         end
     end
 
 
     df = DataFrame(
-        rows, 
+        [getindex.(rows, i) for i in 1:length(rows[1])], 
         [
             :run, :I, :n_layers, :n_params,
             :time_ls, :yerr_ls_train, :cost_ls_train, :yerr_ls_test, :cost_ls_test,

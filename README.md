@@ -10,8 +10,9 @@ This section provides step-by-step instructions for running the experiments on L
 
 - **Linux operating system** (tested on Amazon Linux 2023, but should work on most Linux distributions)
 - **Internet connection** (required for downloading Julia, Python packages, and dependencies)
-- **Sudo access** (required for installing Python3 if not already installed)
+- **Sudo access** (required for installing Python3 and OpenMPI if not already installed)
 - **Sufficient disk space** (recommended: at least 10GB free space)
+- **Gurobi license** (required — see [Gurobi License Setup](#gurobi-license-setup) below)
 
 ### Quick Start
 
@@ -19,7 +20,7 @@ To run all experiments automatically:
 
 ```bash
 # Navigate to the project directory
-cd /path/to/ApplicationDrivenLearning.jl
+cd /path/to/ApplicationDrivenLearningExperiments.jl
 
 # Make the main script executable (if not already)
 chmod +x main.sh
@@ -43,7 +44,7 @@ The script will automatically:
 #### Step 1: Navigate to Project Directory
 
 ```bash
-cd /path/to/ApplicationDrivenLearning.jl
+cd /path/to/ApplicationDrivenLearningExperiments.jl
 ```
 
 #### Step 2: Make Scripts Executable
@@ -107,6 +108,28 @@ If you want to run specific experiments only, you can run the individual scripts
 ```
 
 **Note:** For Knapsack and Shortest Path experiments, make sure to run `python_setup.sh` first to set up the Python virtual environment, as these experiments require Python dependencies.
+
+### Gurobi License Setup
+
+All experiments use [Gurobi](https://www.gurobi.com/) as the optimization solver. **Without a valid license, the experiments will not run.**
+
+#### Using a WLS (Web License Service) license — recommended for AWS
+
+Create a `gurobi.lic` file in your home directory (`$HOME/gurobi.lic`) with the following content:
+
+```
+WLSACCESSID=your-access-id
+WLSSECRET=your-secret
+LICENSEID=your-license-id
+```
+
+You can obtain these credentials from the [Gurobi User Portal](https://portal.gurobi.com). WLS licenses work on cloud environments like AWS.
+
+> **Note:** Standard academic licenses do NOT work on cloud VMs — you must use a WLS license on AWS.
+
+#### Running without Gurobi
+
+If you do not have a Gurobi license, you can substitute a different solver (e.g., HiGHS, GLPK) by manually changing `Gurobi.Optimizer` to your solver of choice in the experiment scripts. This requires code changes and is not officially supported.
 
 ### What the Scripts Do
 
@@ -188,10 +211,19 @@ If a script fails, check the error message. Common issues:
 
 ### Expected Output
 
-The scripts provide detailed output with status messages:
-- `[INFO]` - Informational messages
-- `[SUCCESS]` - Successful operations
-- `[ERROR]` - Error messages (script will exit on errors)
+The scripts provide detailed output with status messages in ASCII boxes:
+
+```
++----------------------------------+
+| [INFO] Some informational message |
++----------------------------------+
++-----------------------------+
+| [SUCCESS] Operation complete |
++-----------------------------+
++----------------------------+
+| [ERROR] Something went wrong |
++----------------------------+
+```
 
 ### Notes
 
@@ -223,7 +255,7 @@ root/
 │   │   ├─ data/ # data folder
 │   │   │   ├─ input/ # (x,y) input data
 │   │   │   ├─ pyepo_result/ # results from PyEPO
-│   │   │   └─ adl_resul/ # results from ApplicationDrivenLearning
+│   │   │   └─ adl_result/ # results from ApplicationDrivenLearning
 │   │   ├─ python/ # python scripts for data generation and PyEPO execution
 │   │   ├─ julia/
 |   │   │   ├─ shortest_path.jl # ApplicationDrivenLearning execution
@@ -232,10 +264,10 @@ root/
 │   │   ├─ data/ # data folder
 │   │   │   ├─ input/ # (x,y) input data
 │   │   │   ├─ pyepo_result/ # results from PyEPO
-│   │   │   └─ adl_resul/ # results from ApplicationDrivenLearning
+│   │   │   └─ adl_result/ # results from ApplicationDrivenLearning
 │   │   ├─ python/ # python scripts for data generation and PyEPO execution
 │   │   ├─ julia/
-|   │   │   ├─ shortest_path.jl # ApplicationDrivenLearning execution
+|   │   │   ├─ knapsack.jl # ApplicationDrivenLearning execution
 |   │   │   └─ post_analysis.jl # final plots generation
 │   ├─ matpower/
 │   │   ├─ data/ # data folder
@@ -254,11 +286,11 @@ root/
 
 Simple multistep newsvendor problem with AR-1 process timeseries. Applies least-squares methodology with BilevelMode and shows difference between ls and opt on in-sample prediction, prediction error and assessed cost.
 
-### Nesvendor 2
+### Newsvendor 2
 
 Uses same basic nesvendor problem, but with 2 timeseries representing 2 different newsvendor instances, with different cost parameters and AR-3 processes for timeseries generation. This shows how to use `input_output_map` to apply the same predictive model for multiple prediction decision variables. 
 
-### Nesvendor 3
+### Newsvendor 3
 
 Applies multistep newsvendor on multiple problem scales. In this experiment, we compare performance for increasing number of predictive model parameters, with results indicating that GradientMode eventually becomes a better alternative than NelderMeadMode and BilevelMode for big problems.
 
