@@ -26,7 +26,7 @@ box "Starting Application-Driven Learning Experiments"
 
 # Run Julia setup
 box "[INFO] Running Julia setup..."
-bash julia_setup.sh
+source julia_setup.sh
 if [ $? -ne 0 ]; then
     box "[ERROR] Julia setup failed."
     exit 1
@@ -34,7 +34,7 @@ fi
 
 # Run Python setup
 box "[INFO] Running Python setup..."
-bash python_setup.sh
+source python_setup.sh
 if [ $? -ne 0 ]; then
     box "[ERROR] Python setup failed."
     exit 1

@@ -127,7 +127,7 @@ ssh -i $KEY_FILE \
 sudo dnf install -y git
 git clone $REPO_URL ApplicationDrivenLearningExperiments.jl
 cd ApplicationDrivenLearningExperiments.jl
-nohup bash main.sh > ~/experiments.log 2>&1 &
+nohup bash -l main.sh > ~/experiments.log 2>&1 &
 echo \$! > ~/experiments.pid
 echo "Experiments started (PID: \$(cat ~/experiments.pid))"
 EOF
@@ -140,4 +140,4 @@ echo "  Public IP    : $PUBLIC_IP"
 echo ""
 echo "  Follow logs  : ssh -i $KEY_FILE ec2-user@$PUBLIC_IP 'tail -f ~/experiments.log'"
 echo "  Stop instance: aws ec2 stop-instances --instance-ids $INSTANCE_ID"
-echo "  Term instance: aws ec2 terminate-instances --instance-ids $INSTANCE_ID"
+echo "  Terminate instance: aws ec2 terminate-instances --instance-ids $INSTANCE_ID"
