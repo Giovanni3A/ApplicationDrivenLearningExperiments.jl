@@ -4,14 +4,14 @@ JQM = JobQueueMPI
 
 dotm_files = [
     "pglib_opf_case24_ieee_rts",
-    "pglib_opf_case118_ieee",
-    "pglib_opf_case179_goc",
-    "pglib_opf_case240_pserc",
-    "pglib_opf_case588_sdet",
-    "pglib_opf_case300_ieee",
-    "pglib_opf_case500_goc",
-    "pglib_opf_case793_goc",
-    "pglib_opf_case1354_pegase"
+    # "pglib_opf_case118_ieee",
+    # "pglib_opf_case179_goc",
+    # "pglib_opf_case240_pserc",
+    # "pglib_opf_case588_sdet",
+    # "pglib_opf_case300_ieee",
+    # "pglib_opf_case500_goc",
+    # "pglib_opf_case793_goc",
+    # "pglib_opf_case1354_pegase"
 ]
 
 for i=1:size(dotm_files, 1)

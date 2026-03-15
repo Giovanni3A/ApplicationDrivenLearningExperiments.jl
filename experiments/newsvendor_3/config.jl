@@ -1,19 +1,19 @@
-T_train = 300
-T_test = 100
+T_train = 50
+T_test = 20
 p = 4
 r = 4
-n_tries = 10
+n_tries = 1
 hidden_layers_size = 16
-pretrain_time_limit = 60*3
-time_limit = 60*10
+pretrain_time_limit = 30
+time_limit = 60
 compute_every = 10
-max_iter = 10_000
-max_iter_pretrain = 300_000
+max_iter = 100
+max_iter_pretrain = 500
 batch_size = 32
 max_params_nelder_mead = 400
 max_I_jump_ls = 10
 max_pretrain_tries = 3
 g_tol = 1e-2
 
-I_space = [2,10,20,50,100,500,1000]
+I_space = [2, 10]
 n_hidden_layers_space = [0]
