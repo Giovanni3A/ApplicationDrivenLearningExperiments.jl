@@ -30,6 +30,7 @@ chmod +x main.sh
 ```
 
 The script will automatically:
+
 1. Check and install Julia if needed
 2. Check and install Python3 if needed
 3. Set up Python virtual environment and install dependencies
@@ -205,6 +206,7 @@ pip cache purge
 #### Script Execution Errors
 
 If a script fails, check the error message. Common issues:
+
 - Missing dependencies (run setup scripts first)
 - Network connectivity issues (required for package downloads)
 - Insufficient permissions (check file permissions with `ls -l`)
@@ -232,7 +234,6 @@ The scripts provide detailed output with status messages in ASCII boxes:
 - All experiments use the Julia project environment defined by `Project.toml` in the root directory
 
 ## Structure
-
 
 ```sh
 root/
@@ -278,7 +279,7 @@ root/
 │   │   ├─ config.jl # experiment parameters
 │   │   ├─ main.jl # script for running a full case
 │   │   └─ auto_run.jl # script for iteratively running multiple cases
-``` 
+```
 
 ## Experiments Description
 
@@ -288,7 +289,7 @@ Simple multistep newsvendor problem with AR-1 process timeseries. Applies least-
 
 ### Newsvendor 2
 
-Uses same basic nesvendor problem, but with 2 timeseries representing 2 different newsvendor instances, with different cost parameters and AR-3 processes for timeseries generation. This shows how to use `input_output_map` to apply the same predictive model for multiple prediction decision variables. 
+Uses same basic nesvendor problem, but with 2 timeseries representing 2 different newsvendor instances, with different cost parameters and AR-3 processes for timeseries generation. This shows how to use `input_output_map` to apply the same predictive model for multiple prediction decision variables.
 
 ### Newsvendor 3
 
@@ -300,8 +301,49 @@ Shortest path problem from PyEPO (https://arxiv.org/abs/2206.14234). This takes 
 
 ### Knapsack
 
-Knapsack problem from PyEPO (https://arxiv.org/abs/2206.14234). This takes data constructed from PyEPO code, mounts the same problem, solves it and compare out-of-sample costs. 
+Knapsack problem from PyEPO (https://arxiv.org/abs/2206.14234). This takes data constructed from PyEPO code, mounts the same problem, solves it and compare out-of-sample costs.
 
 ### Matpower
 
 Loads system files from PGLib-OPF and train a load forecasting and reserve sizing model in the context of minimal operation cost optimization as described in https://arxiv.org/pdf/2102.13273.
+
+## Deploying on AWS from Your Local Machine
+
+If you want to run the experiments on a fresh AWS EC2 instance without manually SSH-ing in, use `deploy.sh`. It handles everything: provisioning the instance, copying your Gurobi license, cloning the repo, and launching the experiments in the background.
+
+**Requirements on your local machine:**
+
+- [AWS CLI](https://aws.amazon.com/cli/) configured with valid credentials (`aws configure`)
+- A `gurobi.lic` file (WLS license — see [Gurobi License Setup](#gurobi-license-setup))
+
+```bash
+# Clone the repo locally just to get deploy.sh
+git clone <repo-url> ApplicationDrivenLearningExperiments.jl
+cd ApplicationDrivenLearningExperiments.jl
+
+# Launch everything
+REPO_URL=<repo-url> bash deploy.sh
+```
+
+The script will:
+
+1. Create an EC2 key pair and security group (SSH only) if they don't exist
+2. Launch a `c5.4xlarge` Amazon Linux 2023 instance with 30GB storage
+3. Wait for it to pass AWS status checks
+4. Copy your Gurobi license to the instance
+5. Clone the repo and run `main.sh` in the background via `nohup`
+6. Print commands to follow logs and stop/terminate the instance when done
+
+**Optional environment variables:**
+
+| Variable         | Default                                                                     | Description                |
+| ---------------- | --------------------------------------------------------------------------- | -------------------------- |
+| `REPO_URL`       | `https://github.com/Giovanni3A/ApplicationDrivenLearningExperiments.jl.git` | Git clone URL              |
+| `GUROBI_LICENSE` | `$HOME/gurobi.lic`                                                          | Path to local license file |
+| `INSTANCE_TYPE`  | `c5.4xlarge`                                                                | EC2 instance type          |
+| `VOLUME_SIZE`    | `30`                                                                        | Root volume size in GB     |
+| `KEY_NAME`       | `adl-key`                                                                   | EC2 key pair name          |
+| `KEY_FILE`       | `adl-key.pem`                                                               | Local path for .pem file   |
+| `SG_NAME`        | `adl-sg`                                                                    | Security group name        |
+
+**Remember to stop or terminate the instance when done to avoid unnecessary charges.**
