@@ -8,22 +8,24 @@
 #
 # Optional environment variables:
 #   GUROBI_LICENSE  Path to local gurobi.lic file (default: $HOME/gurobi.lic)
-#   INSTANCE_TYPE   EC2 instance type          (default: c5.4xlarge)
+#   INSTANCE_TYPE   EC2 instance type          (default: c4.4xlarge)
 #   VOLUME_SIZE     Root volume size in GB     (default: 30)
 #   KEY_NAME        EC2 key pair name          (default: adl-key)
 #   KEY_FILE        Local path for .pem file   (default: adl-key.pem)
 #   SG_NAME         Security group name        (default: adl-sg)
+#   INSTANCE_NAME   EC2 instance Name tag      (default: adl-experiments)
 # ============================================================================
 
 set -e
 
-REPO_URL="${REPO_URL:?Please set the REPO_URL environment variable}"
-GUROBI_LICENSE="${GUROBI_LICENSE:-$HOME/gurobi.lic}"
-INSTANCE_TYPE="${INSTANCE_TYPE:-c5.4xlarge}"
+REPO_URL="https://github.com/Giovanni3A/ApplicationDrivenLearningExperiments.jl.git"
+GUROBI_LICENSE="$HOME/gurobi.lic"
+INSTANCE_TYPE="${INSTANCE_TYPE:-c4.4xlarge}"
 VOLUME_SIZE="${VOLUME_SIZE:-30}"
 KEY_NAME="${KEY_NAME:-adl-key}"
 KEY_FILE="${KEY_FILE:-adl-key.pem}"
 SG_NAME="${SG_NAME:-adl-sg}"
+INSTANCE_NAME="${INSTANCE_NAME:-adl-experiments}"
 
 box() {
     local msg="$1"
@@ -82,18 +84,27 @@ AMI_ID=$(aws ec2 describe-images \
     --query 'sort_by(Images, &CreationDate)[-1].ImageId' \
     --output text)
 
-box "[INFO] Launching EC2 instance ($INSTANCE_TYPE, ${VOLUME_SIZE}GB)..."
-INSTANCE_ID=$(aws ec2 run-instances \
-    --image-id $AMI_ID \
-    --instance-type $INSTANCE_TYPE \
-    --key-name $KEY_NAME \
-    --security-group-ids $SG_ID \
-    --block-device-mappings "[{\"DeviceName\":\"/dev/xvda\",\"Ebs\":{\"VolumeSize\":$VOLUME_SIZE}}]" \
-    --query 'Instances[0].InstanceId' \
-    --output text)
+INSTANCE_ID=$(aws ec2 describe-instances \
+    --filters "Name=tag:Name,Values=$INSTANCE_NAME" "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+    --query 'Reservations[0].Instances[0].InstanceId' \
+    --output text 2>/dev/null)
 
-box "[INFO] Waiting for instance $INSTANCE_ID to pass status checks..."
-aws ec2 wait instance-status-ok --instance-ids $INSTANCE_ID
+if [ "$INSTANCE_ID" == "None" ] || [ -z "$INSTANCE_ID" ]; then
+    box "[INFO] Launching EC2 instance ($INSTANCE_TYPE, ${VOLUME_SIZE}GB)..."
+    INSTANCE_ID=$(aws ec2 run-instances \
+        --image-id $AMI_ID \
+        --instance-type $INSTANCE_TYPE \
+        --key-name $KEY_NAME \
+        --security-group-ids $SG_ID \
+        --block-device-mappings "[{\"DeviceName\":\"/dev/xvda\",\"Ebs\":{\"VolumeSize\":$VOLUME_SIZE}}]" \
+        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$INSTANCE_NAME}]" \
+        --query 'Instances[0].InstanceId' \
+        --output text)
+    box "[INFO] Waiting for instance $INSTANCE_ID to pass status checks..."
+    aws ec2 wait instance-status-ok --instance-ids $INSTANCE_ID
+else
+    box "[INFO] Instance already exists: $INSTANCE_ID — skipping launch"
+fi
 
 PUBLIC_IP=$(aws ec2 describe-instances \
     --instance-ids $INSTANCE_ID \
@@ -113,6 +124,7 @@ box "[INFO] Deploying and starting experiments..."
 ssh -i $KEY_FILE \
     -o StrictHostKeyChecking=no \
     ec2-user@$PUBLIC_IP << EOF
+sudo dnf install -y git
 git clone $REPO_URL ApplicationDrivenLearningExperiments.jl
 cd ApplicationDrivenLearningExperiments.jl
 nohup bash main.sh > ~/experiments.log 2>&1 &
