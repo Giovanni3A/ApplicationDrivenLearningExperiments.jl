@@ -55,3 +55,15 @@ if ! command -v mpiexec &> /dev/null; then
 else
     box "[INFO] MPI is already installed: $(mpiexec --version 2>&1 | head -1)"
 fi
+
+# ============================================================================
+# Instantiate Julia project (install all packages from Manifest.toml)
+# ============================================================================
+box "[INFO] Instantiating Julia project..."
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+julia --project="$SCRIPT_DIR" -e "import Pkg; Pkg.instantiate(); Pkg.precompile()"
+if [ $? -ne 0 ]; then
+    box "[ERROR] Julia project instantiation failed."
+    exit 1
+fi
+box "[SUCCESS] Julia project instantiated and precompiled successfully."
