@@ -81,6 +81,11 @@ if nm_condition
     nm_cost_train = ADL.compute_cost(model, X_train, Y_dict_train, false, false)
     nm_pred_test = model.forecast(X_test')'
     nm_cost_test = ADL.compute_cost(model, X_test, Y_dict_test, false, false)
+else
+    nm_pred_train = zeros(size(Y_train))
+    nm_cost_train = zeros(size(Y_train, 1))
+    nm_pred_test = zeros(size(Y_test))
+    nm_cost_test = zeros(size(Y_test, 1))
 end
 
 # get optimal decision
