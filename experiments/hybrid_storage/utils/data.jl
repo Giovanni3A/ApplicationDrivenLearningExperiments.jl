@@ -162,19 +162,19 @@ y_idx_pi(pidx, h) = (pidx - 1) * N_OUTPUTS_PER_PROJ + H + h
 
 # Un-standardized physical values (variables × scalar constants → linear).
 function _G_phys_plan(h, pidx)
-    return G_fc[h, pidx].plan * std_Y[y_idx_G(pidx, h)] + mu_Y[y_idx_G(pidx, h)]
+    return G_fc[h, pidx].plan #* std_Y[y_idx_G(pidx, h)] + mu_Y[y_idx_G(pidx, h)]
 end
 function _G_phys_assess(h, pidx)
-    return G_fc[h, pidx].assess * std_Y[y_idx_G(pidx, h)] +
-           mu_Y[y_idx_G(pidx, h)]
+    return G_fc[h, pidx].assess #* std_Y[y_idx_G(pidx, h)] +
+        #    mu_Y[y_idx_G(pidx, h)]
 end
 function _pi_phys_plan(h, pidx)
-    return pi_fc[h, pidx].plan * std_Y[y_idx_pi(pidx, h)] +
-           mu_Y[y_idx_pi(pidx, h)]
+    return pi_fc[h, pidx].plan #* std_Y[y_idx_pi(pidx, h)] +
+        #    mu_Y[y_idx_pi(pidx, h)]
 end
 function _pi_phys_assess(h, pidx)
-    return pi_fc[h, pidx].assess * std_Y[y_idx_pi(pidx, h)] +
-           mu_Y[y_idx_pi(pidx, h)]
+    return pi_fc[h, pidx].assess #* std_Y[y_idx_pi(pidx, h)] +
+        #    mu_Y[y_idx_pi(pidx, h)]
 end
 
 function deflatten(x::AbstractMatrix)
@@ -195,3 +195,22 @@ end
 
 deflattened_Y_train = deflatten(Y_train_clean)
 deflattened_Y_test = deflatten(Y_test_clean)
+
+# Output reparametrization: enforce G_phys >= 0 inside the network instead of
+# via LP slack penalties. Maps z_norm → ((softplus(z_norm·std + μ) − μ)/std) on G
+# channels and passes π channels through. Output stays in normalized space so the
+# LP's un-standardization and the MSE pretraining loss are unchanged.
+const _G_OUT_MASK = let m = falses(length(target_names))
+    for pidx = 1:N_PROJ, h = 1:H
+        m[y_idx_G(pidx, h)] = true
+    end
+    Float32.(m)
+end
+const _MU_Y_VEC = Float32.(vec(mu_Y))
+const _STD_Y_VEC = Float32.(vec(std_Y))
+
+function nonneg_g_output(z::AbstractArray)
+    z_phys = z .* _STD_Y_VEC .+ _MU_Y_VEC
+    z_norm_pos = Flux.softplus.(z) .* _STD_Y_VEC
+    return _G_OUT_MASK .* z_norm_pos .+ (1.0f0 .- _G_OUT_MASK) .* z_phys
+end

@@ -33,4 +33,4 @@ const TRAIN_END = DateTime("2025-09-01T00:00:00")
 const TEST_START = DateTime("2025-09-01T00:00:00")
 const TEST_END = DateTime("2026-03-14T00:00:00")
 
-const PHANTOM_PENALTY = 99999   # $/MWh penalty for phantom generation (infeasible production shortfall)
+const PHANTOM_PENALTY = 9_999   # $/MWh penalty for phantom generation (infeasible production shortfall)

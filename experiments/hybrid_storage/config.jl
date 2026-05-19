@@ -3,14 +3,14 @@
 
 # Predictive model archetype
 model_type = 1   # 1 = uni (one shared model), 2 = many (per-project models), 3 = multi (joint multivariate)
-pretrain = false
+pretrain = true
 
 # Network architecture
 N_HIDDEN_LAYERS = 2      # 0 = linear; >0 = MLP with ReLU
 HIDDEN_SIZE = 64
 
 # Pretrain hyperparameters
-PRETRAIN_EPOCHS = 100
+PRETRAIN_EPOCHS = 1000
 PRETRAIN_MAX_TIME = 60 * 1         # seconds
 PRETRAIN_LEARNING_RATE = 1e-3
 PRETRAIN_BATCH_SIZE = 256            # -1 = full batch

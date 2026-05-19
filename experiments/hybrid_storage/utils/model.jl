@@ -26,15 +26,15 @@ model = ADL.Model()
         plan_curtail[h = 1:H, pidx = 1:N_PROJ] >= 0.0
         plan_generator_output[h = 1:H, pidx = 1:N_PROJ] >= 0.0
     end
-)   # phantom generation (MWh)
+)
 
-# define generator output as equal to forecast output except for shortfall
-# slack (negative forecasts)
+# Generator output: predicted generation less optional curtailment. G_phys is
+# guaranteed non-negative by the NN output reparametrization.
 @constraint(
     ADL.Plan(model),
     [h = 1:H, pidx = 1:N_PROJ],
     plan_generator_output[h, pidx] ==
-    _G_phys_plan(h, pidx) + plan_shortfall[h, pidx] - plan_curtail[h, pidx]
+    G_fc[h, pidx].plan + plan_shortfall[h, pidx] - plan_curtail[h, pidx]
 )
 
 # Balance constraint
@@ -43,6 +43,11 @@ model = ADL.Model()
     [h = 1:H, pidx = 1:N_PROJ],
     charge[h, pidx].plan + plan_sale[h, pidx] ==
     plan_generator_output[h, pidx] + discharge[h, pidx].plan
+)
+@constraint(
+    ADL.Plan(model),
+    [h = 1:H, pidx = 1:N_PROJ],
+    charge[h, pidx].plan <= plan_generator_output[h, pidx]
 )
 
 # SoC dynamics (1h timestep, so MW × 1h = MWh and c/d are already MWh).
@@ -91,13 +96,12 @@ model = ADL.Model()
     plan_soc[H, pidx] == BESS[PROJECT_IDS[pidx]].soc_0
 )
 
-# Plan objective: minimize -revenue + phantom-generation penalty (so it's a Min problem,
-# matching matpower's convention).
+# Plan objective: minimize -revenue (Min problem, matching matpower's convention).
 @objective(
     ADL.Plan(model),
     Min,
     -sum(
-        _pi_phys_plan(h, pidx) * plan_sale[h, pidx] for h = 1:H, pidx = 1:N_PROJ
+        pi_fc[h, pidx].plan * plan_sale[h, pidx] for h = 1:H, pidx = 1:N_PROJ
     ) +
     PHANTOM_PENALTY * sum(plan_shortfall[h, pidx] for h = 1:H, pidx = 1:N_PROJ)
 )
@@ -106,7 +110,6 @@ model = ADL.Model()
 @variables(
     ADL.Assess(model),
     begin
-        assess_shortfall[1:H, 1:N_PROJ] >= 0.0
         assess_soc[1:H, 1:N_PROJ] >= 0.0
         assess_sale[h = 1:H, pidx = 1:N_PROJ] >= 0.0
         assess_curtail[h = 1:H, pidx = 1:N_PROJ] >= 0.0
@@ -125,26 +128,23 @@ model = ADL.Model()
 @constraint(
     ADL.Assess(model),
     [h = 1:H, pidx = 1:N_PROJ],
-    assess_charge[h, pidx] ==
-    charge[h, pidx].assess + assess_charge_slack_pos[h, pidx] -
-    assess_charge_slack_neg[h, pidx]
+    assess_charge[h, pidx] <=
+    charge[h, pidx].assess
 )
 @constraint(
     ADL.Assess(model),
     [h = 1:H, pidx = 1:N_PROJ],
-    assess_discharge[h, pidx] ==
-    discharge[h, pidx].assess + assess_discharge_slack_pos[h, pidx] -
-    assess_discharge_slack_neg[h, pidx]
+    assess_discharge[h, pidx] <=
+    discharge[h, pidx].assess
 )
 
-# define generator output as equal to forecast output except for shortfall
-# slack (negative forecasts)
+# Generator output: predicted generation less optional curtailment. G_phys is
+# guaranteed non-negative by the NN output reparametrization.
 @constraint(
     ADL.Assess(model),
     [h = 1:H, pidx = 1:N_PROJ],
     assess_generator_output[h, pidx] ==
-    _G_phys_assess(h, pidx) + assess_shortfall[h, pidx] -
-    assess_curtail[h, pidx]
+    G_fc[h, pidx].assess - assess_curtail[h, pidx]
 )
 
 # Balance constraint
@@ -153,6 +153,11 @@ model = ADL.Model()
     [h = 1:H, pidx = 1:N_PROJ],
     assess_charge[h, pidx] + assess_sale[h, pidx] ==
     assess_generator_output[h, pidx] + assess_discharge[h, pidx]
+)
+@constraint(
+    ADL.Assess(model),
+    [h = 1:H, pidx = 1:N_PROJ],
+    assess_charge[h, pidx] <= assess_generator_output[h, pidx]
 )
 
 # SoC dynamics (1h timestep, so MW × 1h = MWh and c/d are already MWh).
@@ -205,11 +210,9 @@ model = ADL.Model()
     ADL.Assess(model),
     Min,
     -sum(
-        _pi_phys_assess(h, pidx) * assess_sale[h, pidx] for h = 1:H,
+        pi_fc[h, pidx].assess * assess_sale[h, pidx] for h = 1:H,
         pidx = 1:N_PROJ
     ) +
-    PHANTOM_PENALTY *
-    sum(assess_shortfall[h, pidx] for h = 1:H, pidx = 1:N_PROJ) +
     PHANTOM_PENALTY * sum(
         assess_charge_slack_pos[h, pidx] +
         assess_charge_slack_neg[h, pidx] +
@@ -227,9 +230,9 @@ Y_dict_train = Dict{ADL.Forecast,Vector{Float32}}()
 Y_dict_test = Dict{ADL.Forecast,Vector{Float32}}()
 for (pidx, pid) in enumerate(PROJECT_IDS)
     for h = 1:H
-        Y_dict_train[G_fc[h, pidx]] = Y_train[:, y_idx_G(pidx, h)]
-        Y_dict_train[pi_fc[h, pidx]] = Y_train[:, y_idx_pi(pidx, h)]
-        Y_dict_test[G_fc[h, pidx]] = Y_test[:, y_idx_G(pidx, h)]
-        Y_dict_test[pi_fc[h, pidx]] = Y_test[:, y_idx_pi(pidx, h)]
+        Y_dict_train[G_fc[h, pidx]] = Y_train_clean[:, y_idx_G(pidx, h)]
+        Y_dict_train[pi_fc[h, pidx]] = Y_train_clean[:, y_idx_pi(pidx, h)]
+        Y_dict_test[G_fc[h, pidx]] = Y_test_clean[:, y_idx_G(pidx, h)]
+        Y_dict_test[pi_fc[h, pidx]] = Y_test_clean[:, y_idx_pi(pidx, h)]
     end
 end

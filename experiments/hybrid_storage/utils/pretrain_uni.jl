@@ -4,7 +4,7 @@ INPUT_SIZE = length(feature_names)
 OUTPUT_SIZE = length(target_names)
 
 if N_HIDDEN_LAYERS == 0
-    nn = Flux.Chain(Flux.Dense(INPUT_SIZE => OUTPUT_SIZE))
+    nn = Flux.Chain(Flux.Dense(INPUT_SIZE => OUTPUT_SIZE), nonneg_g_output)
 else
     layers = Any[Flux.Dense(INPUT_SIZE => HIDDEN_SIZE), Flux.relu]
     for _ = 1:(N_HIDDEN_LAYERS-1)
@@ -12,6 +12,7 @@ else
         push!(layers, Flux.relu)
     end
     push!(layers, Flux.Dense(HIDDEN_SIZE => OUTPUT_SIZE))
+    push!(layers, nonneg_g_output)
     nn = Flux.Chain(layers...)
 end
 
@@ -20,7 +21,7 @@ if pretrain
     batch_sz =
         PRETRAIN_BATCH_SIZE == -1 ? size(X_train, 1) : PRETRAIN_BATCH_SIZE
     train_data = Flux.DataLoader(
-        (X_train', Y_train'),
+        (X_train', Y_train_clean'),
         batchsize = batch_sz,
         shuffle = true,
     )
@@ -34,7 +35,7 @@ if pretrain
             return mean((m(x) .- y) .^ 2)
         end
 
-        err2 = mean((nn(X_train')' .- Y_train) .^ 2)
+        err2 = mean((nn(X_train')' .- Y_train_clean) .^ 2)
         err_var = abs(err - err2)
         err = err2
 
