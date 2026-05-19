@@ -12,28 +12,36 @@ model = ADL.Model()
 @variable(model, pi_fc[1:H, 1:N_PROJ], ADL.Forecast)
 
 # --- Decision (Policy) variables — values in both Plan and Assess stages ---
-@variable(model, charge[1:H, 1:N_PROJ] >= 0.0, ADL.Policy)   # charge from renewables (MWh)
-@variable(model, discharge[1:H, 1:N_PROJ] >= 0.0, ADL.Policy)   # discharge to grid    (MWh)
+@variable(model, charge_h1[1:N_PROJ] >= 0.0, ADL.Policy)   # charge from renewables (MWh)
+@variable(model, discharge_h1[1:N_PROJ] >= 0.0, ADL.Policy)   # discharge to grid    (MWh)
 
 # --- Plan stage ---
 
 @variables(
     ADL.Plan(model),
     begin
+        plan_charge[1:H, 1:N_PROJ] >= 0.0
+        plan_discharge[1:H, 1:N_PROJ] >= 0.0
         plan_shortfall[1:H, 1:N_PROJ] >= 0.0
+        plan_curtail[h = 1:H, pidx = 1:N_PROJ] >= 0.0
         plan_soc[1:H, 1:N_PROJ] >= 0.0
         plan_sale[h = 1:H, pidx = 1:N_PROJ] >= 0.0
-        plan_curtail[h = 1:H, pidx = 1:N_PROJ] >= 0.0
-        plan_generator_output[h = 1:H, pidx = 1:N_PROJ] >= 0.0
     end
 )
 
-# Generator output: predicted generation less optional curtailment. G_phys is
-# guaranteed non-negative by the NN output reparametrization.
-@constraint(
+# first hour charge/discharge link to policy variables
+@constraints(
     ADL.Plan(model),
-    [h = 1:H, pidx = 1:N_PROJ],
-    plan_generator_output[h, pidx] ==
+    begin
+        [pidx = 1:N_PROJ], plan_charge[1, pidx] == charge_h1[pidx].plan
+        [pidx = 1:N_PROJ], plan_discharge[1, pidx] == discharge_h1[pidx].plan
+    end
+)
+
+# Generator output: predicted generation less optional curtailment (plus shortfall when needed)
+@expression(
+    ADL.Plan(model),
+    plan_generator_output[h = 1:H, pidx = 1:N_PROJ],
     G_fc[h, pidx].plan + plan_shortfall[h, pidx] - plan_curtail[h, pidx]
 )
 
@@ -41,13 +49,8 @@ model = ADL.Model()
 @constraint(
     ADL.Plan(model),
     [h = 1:H, pidx = 1:N_PROJ],
-    charge[h, pidx].plan + plan_sale[h, pidx] ==
-    plan_generator_output[h, pidx] + discharge[h, pidx].plan
-)
-@constraint(
-    ADL.Plan(model),
-    [h = 1:H, pidx = 1:N_PROJ],
-    charge[h, pidx].plan <= plan_generator_output[h, pidx]
+    plan_charge[h, pidx] + plan_sale[h, pidx] ==
+    plan_generator_output[h, pidx] + plan_discharge[h, pidx]
 )
 
 # SoC dynamics (1h timestep, so MW × 1h = MWh and c/d are already MWh).
@@ -55,15 +58,15 @@ model = ADL.Model()
     ADL.Plan(model),
     [pidx = 1:N_PROJ],
     plan_soc[1, pidx] ==
-    BESS[PROJECT_IDS[pidx]].soc_0 + η * charge[1, pidx].plan -
-    discharge[1, pidx].plan / η
+    BESS[PROJECT_IDS[pidx]].soc_0 + η * plan_charge[1, pidx] -
+    plan_discharge[1, pidx] / η
 )
 @constraint(
     ADL.Plan(model),
     [h = 2:H, pidx = 1:N_PROJ],
     plan_soc[h, pidx] ==
-    plan_soc[h-1, pidx] + η * charge[h, pidx].plan -
-    discharge[h, pidx].plan / η
+    plan_soc[h-1, pidx] + η * plan_charge[h, pidx] -
+    plan_discharge[h, pidx] / η
 )
 
 # battery state upper limit
@@ -77,7 +80,7 @@ model = ADL.Model()
 @constraint(
     ADL.Plan(model),
     [h = 1:H, pidx = 1:N_PROJ],
-    charge[h, pidx].plan + discharge[h, pidx].plan <=
+    plan_charge[h, pidx] + plan_discharge[h, pidx] <=
     BESS[PROJECT_IDS[pidx]].p_max
 )
 
@@ -85,7 +88,7 @@ model = ADL.Model()
 @constraint(
     ADL.Plan(model),
     [pidx = 1:N_PROJ],
-    sum(discharge[h, pidx].plan for h = 1:H) <=
+    sum(plan_discharge[h, pidx] for h = 1:H) <=
     n_cycles * BESS[PROJECT_IDS[pidx]].e_max
 )
 
@@ -110,40 +113,29 @@ model = ADL.Model()
 @variables(
     ADL.Assess(model),
     begin
-        assess_soc[1:H, 1:N_PROJ] >= 0.0
-        assess_sale[h = 1:H, pidx = 1:N_PROJ] >= 0.0
-        assess_curtail[h = 1:H, pidx = 1:N_PROJ] >= 0.0
-        assess_generator_output[h = 1:H, pidx = 1:N_PROJ] >= 0.0
-        assess_charge_slack_pos[h = 1:H, pidx = 1:N_PROJ] >= 0.0
-        assess_charge_slack_neg[h = 1:H, pidx = 1:N_PROJ] >= 0.0
-        assess_discharge_slack_pos[h = 1:H, pidx = 1:N_PROJ] >= 0.0
-        assess_discharge_slack_neg[h = 1:H, pidx = 1:N_PROJ] >= 0.0
         assess_charge[h = 1:H, pidx = 1:N_PROJ] >= 0.0
         assess_discharge[h = 1:H, pidx = 1:N_PROJ] >= 0.0
+        assess_curtail[h = 1:H, pidx = 1:N_PROJ] >= 0.0
+        assess_soc[1:H, 1:N_PROJ] >= 0.0
+        assess_sale[h = 1:H, pidx = 1:N_PROJ] >= 0.0
+        assess_charge_slack_h1[1:N_PROJ] >= 0.0
+        assess_discharge_slack_h1[1:N_PROJ] >= 0.0
     end
 )
 
-# slack variables for charge/discharge to enable subgradient flow when the battery is full/empty or at power limits. 
-# Penalized in the objective to ensure they're only used when necessary.
-@constraint(
+# first hour charge/discharge link to policy variables
+@constraints(
     ADL.Assess(model),
-    [h = 1:H, pidx = 1:N_PROJ],
-    assess_charge[h, pidx] <=
-    charge[h, pidx].assess
-)
-@constraint(
-    ADL.Assess(model),
-    [h = 1:H, pidx = 1:N_PROJ],
-    assess_discharge[h, pidx] <=
-    discharge[h, pidx].assess
+    begin
+        [pidx = 1:N_PROJ], assess_charge[1, pidx] == charge_h1[pidx].assess - assess_charge_slack_h1[pidx]
+        [pidx = 1:N_PROJ], assess_discharge[1, pidx] == discharge_h1[pidx].assess - assess_discharge_slack_h1[pidx]
+    end
 )
 
-# Generator output: predicted generation less optional curtailment. G_phys is
-# guaranteed non-negative by the NN output reparametrization.
-@constraint(
+# Generator output
+@expression(
     ADL.Assess(model),
-    [h = 1:H, pidx = 1:N_PROJ],
-    assess_generator_output[h, pidx] ==
+    assess_generator_output[h = 1:H, pidx = 1:N_PROJ],
     G_fc[h, pidx].assess - assess_curtail[h, pidx]
 )
 
@@ -153,11 +145,6 @@ model = ADL.Model()
     [h = 1:H, pidx = 1:N_PROJ],
     assess_charge[h, pidx] + assess_sale[h, pidx] ==
     assess_generator_output[h, pidx] + assess_discharge[h, pidx]
-)
-@constraint(
-    ADL.Assess(model),
-    [h = 1:H, pidx = 1:N_PROJ],
-    assess_charge[h, pidx] <= assess_generator_output[h, pidx]
 )
 
 # SoC dynamics (1h timestep, so MW × 1h = MWh and c/d are already MWh).
@@ -214,10 +201,7 @@ model = ADL.Model()
         pidx = 1:N_PROJ
     ) +
     PHANTOM_PENALTY * sum(
-        assess_charge_slack_pos[h, pidx] +
-        assess_charge_slack_neg[h, pidx] +
-        assess_discharge_slack_pos[h, pidx] +
-        assess_discharge_slack_neg[h, pidx] for h = 1:H, pidx = 1:N_PROJ
+        assess_charge_slack_h1[pidx] + assess_discharge_slack_h1[pidx] for pidx = 1:N_PROJ
     )
 )
 

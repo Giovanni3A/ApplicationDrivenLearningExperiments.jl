@@ -1,5 +1,4 @@
 # Hybrid storage experiment orchestration.
-# Run: julia --project=. experiments/hybrid_storage/main.jl
 
 using Pkg
 cur_dir = @__DIR__
@@ -26,13 +25,10 @@ ApplicationDrivenLearning.set_forecast_model(model, pred_model)
 
 # Baseline metrics from the pretrained predictor.
 ls_pred = deflatten(model.forecast(X_test')')
-
 ls_G_err = ls_pred[:, :, 1, :] - deflatten(Y_test_clean)[:, :, 1, :]
 ls_G_rmse = mean(ls_G_err .^ 2) .^ 0.5
-
 ls_Pi_err = ls_pred[:, :, 2, :] - deflatten(Y_test_clean)[:, :, 2, :]
 ls_Pi_rmse = mean(ls_Pi_err .^ 2) .^ 0.5
-
 ls_cost = ADL.compute_cost(model, X_test, Y_dict_test)
 
 println("Pretrained predictor test RMSE: G = $ls_G_rmse, Pi = $ls_Pi_rmse")
@@ -55,11 +51,15 @@ sol = ApplicationDrivenLearning.train!(
 )
 println("GradientMode training time: $(time() - time1)")
 
-gd_pred = model.forecast(X_train')'
-gd_mse = mean(sum((gd_pred .- Y_train) .^ 2, dims = 2))
-gd_cost = ApplicationDrivenLearning.compute_cost(model, X_train, Y_dict_train)
-println("Gradient-trained $(ARCH_NAME) MSE (train):  $gd_mse")
-println("Gradient-trained $(ARCH_NAME) Cost (train): $gd_cost")
+gd_pred = deflatten(model.forecast(X_test')')
+gd_G_err = gd_pred[:, :, 1, :] - deflatten(Y_test_clean)[:, :, 1, :]
+gd_G_rmse = mean(gd_G_err .^ 2) .^ 0.5
+gd_Pi_err = gd_pred[:, :, 2, :] - deflatten(Y_test_clean)[:, :, 2, :]
+gd_Pi_rmse = mean(gd_Pi_err .^ 2) .^ 0.5
+gd_cost = ADL.compute_cost(model, X_test, Y_dict_test)
+
+println("Gradient-mode predictor test RMSE: G = $gd_G_rmse, Pi = $gd_Pi_rmse")
+println("Gradient-mode predictor test Cost: $gd_cost")
 
 JLD2.jldsave(final_model_state; state = Flux.state(model.forecast.networks))
 println("Final state saved to $final_model_state")
@@ -75,8 +75,8 @@ MOI.set.(model.plan, POI.ParameterValue(), model.plan_forecast_params, yhat)
 JuMP.optimize!(ADL.Plan(model))
 
 # extract plan solution
-planned_charge = JuMP.value.(charge.plan)
-planned_discharge = JuMP.value.(discharge.plan)
+planned_charge = JuMP.value.(plan_charge)
+planned_discharge = JuMP.value.(plan_discharge)
 
 # run assessment with actuals and plan decisions
 set_normalized_rhs.(
@@ -89,11 +89,7 @@ JuMP.optimize!(ADL.Assess(model))
 
 # extract assessment solution
 actual_charge = JuMP.value.(assess_charge)
-charge_slack_pos = JuMP.value.(assess_charge_slack_pos)
-charge_slack_neg = JuMP.value.(assess_charge_slack_neg)
 actual_discharge = JuMP.value.(assess_discharge)
-discharge_slack_pos = JuMP.value.(assess_discharge_slack_pos)
-discharge_slack_neg = JuMP.value.(assess_discharge_slack_neg)
 actual_sale = JuMP.value.(assess_sale)
 actual_soc = JuMP.value.(assess_soc)
 actual_curt = JuMP.value.(assess_curtail)
@@ -103,12 +99,12 @@ JuMP.objective_value(ADL.Assess(model))
 
 ghat = deflatten(yhat)[:, 1, :]
 pihat = deflatten(yhat)[:, 2, :]
-g = deflatten(y)[:, 1, :]
-pi = deflatten(y)[:, 2, :]
+g = deflatten(Y_train_clean[1, :])[:, 1, :]
+pi = deflatten(Y_train_clean[1, :])[:, 2, :]
 
 using Plots
 
-proj = 2
+proj = 1
 
 # price fig
 price_fig = plot(
@@ -127,7 +123,6 @@ gen_fig = plot(
     color=:black
 )
 plot!(gen_fig, ghat[:, proj], label = "G_hat", color = :grey)
-plot!(gen_fig, actual_g_out[:, proj], label = "Actual gen", color=:red)
 
 # charge fig
 charge_fig = plot(
@@ -137,19 +132,15 @@ charge_fig = plot(
     color=:grey
 )
 plot!(charge_fig, actual_charge[:, proj], label = "Charge", color=:black)
-plot!(charge_fig, charge_slack_pos[:, proj], label = "Charge slack +", color=:red)
-plot!(charge_fig, charge_slack_neg[:, proj], label = "Charge slack -", color=:green)
 
 # discharge fig
 discharge_fig = plot(
     planned_discharge[:, proj],
     label = "Discharge",
     title = "Battery discharge (project $proj)",
-    color=:black
+    color=:grey
 )
-plot!(discharge_fig, actual_discharge[:, proj], label = "Discharge", color=:grey)
-plot!(discharge_fig, discharge_slack_pos[:, proj], label = "Discharge slack +", color=:red)
-plot!(discharge_fig, discharge_slack_neg[:, proj], label = "Discharge slack -", color=:green)
+plot!(discharge_fig, actual_discharge[:, proj], label = "Discharge", color=:black)
 
 # sale fig
 sale_fig = plot(
