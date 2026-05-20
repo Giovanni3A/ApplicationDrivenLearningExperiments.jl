@@ -216,6 +216,22 @@ const pi_feat_names = vcat(_CAL_FEAT_NAMES, _PI_LAG_FEAT_NAMES, _DAM_FEAT_NAMES)
 const g_feat_idx = findall(in(g_feat_names), feature_names)
 const pi_feat_idx = findall(in(pi_feat_names), feature_names)
 
+# Per-project feature subsets for the :many (shared-net, applied-per-project) model.
+const g_feat_names_per_proj = [
+    vcat(_CAL_FEAT_NAMES, ["$(String(p))_hsl_lag$(n)" for n in [1, 2, 6, 24]]) for p in PROJECT_IDS
+]
+const pi_feat_names_per_proj = [
+    vcat(
+        _CAL_FEAT_NAMES,
+        ["$(String(p))_pi_lag$(n)" for n in [1, 2, 6, 24]],
+        ["$(String(p))_dam"],
+    ) for p in PROJECT_IDS
+]
+const g_feat_idx_per_proj =
+    [findall(in(names), feature_names) for names in g_feat_names_per_proj]
+const pi_feat_idx_per_proj =
+    [findall(in(names), feature_names) for names in pi_feat_names_per_proj]
+
 # G activation: softplus * std (matches the G branch of nonneg_g_output — no μ added).
 function g_output_activation(z::AbstractArray)
     return Flux.softplus.(z) .* _STD_Y_G
@@ -224,6 +240,28 @@ end
 # π activation: regular affine (no positivity constraint).
 function pi_output_activation(z::AbstractArray)
     return z .* _STD_Y_PI .+ _MU_Y_PI
+end
+
+# Shared activations for :many — same network is applied across projects, so std/μ
+# must be project-agnostic. We average across projects per hour, giving a 24-vector
+# that approximates the right physical scale for every project. The network learns
+# the residual per-project deviation from this mean.
+const _STD_Y_G_PERHOUR = Float32[
+    mean(_STD_Y_VEC[y_idx_G(p, h)] for p = 1:N_PROJ) for h = 1:H
+]
+const _STD_Y_PI_PERHOUR = Float32[
+    mean(_STD_Y_VEC[y_idx_pi(p, h)] for p = 1:N_PROJ) for h = 1:H
+]
+const _MU_Y_PI_PERHOUR = Float32[
+    mean(_MU_Y_VEC[y_idx_pi(p, h)] for p = 1:N_PROJ) for h = 1:H
+]
+
+function g_output_activation_many(z::AbstractArray)
+    return Flux.softplus.(z) .* _STD_Y_G_PERHOUR
+end
+
+function pi_output_activation_many(z::AbstractArray)
+    return z .* _STD_Y_PI_PERHOUR .+ _MU_Y_PI_PERHOUR
 end
 
 function concat_z_activation(z::AbstractArray)

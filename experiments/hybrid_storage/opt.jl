@@ -27,7 +27,7 @@ include("utils/model.jl")
 
 if model_type == :uni
     pred_model = ApplicationDrivenLearning.PredictiveModel(nn)
-elseif model_type == :type
+elseif model_type in (:type, :many)
     pred_model =
         ApplicationDrivenLearning.PredictiveModel(nns, input_output_map)
 else

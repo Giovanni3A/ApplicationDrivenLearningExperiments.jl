@@ -23,7 +23,7 @@ include("utils/model.jl")
 
 if model_type == :uni
     pred_model = ApplicationDrivenLearning.PredictiveModel(nn)
-elseif model_type == :type
+elseif model_type in (:type, :many)
     pred_model =
         ApplicationDrivenLearning.PredictiveModel(nns, input_output_map)
 else
@@ -32,16 +32,24 @@ end
 ApplicationDrivenLearning.set_forecast_model(model, pred_model)
 
 # Baseline metrics from the pretrained predictor.
-ls_pred = deflatten(model.forecast(X_test')')
-ls_G_err = ls_pred[:, :, 1, :] - deflatten(Y_test_clean)[:, :, 1, :]
-ls_G_rmse = mean(ls_G_err .^ 2) .^ 0.5
-ls_Pi_err = ls_pred[:, :, 2, :] - deflatten(Y_test_clean)[:, :, 2, :]
-ls_Pi_rmse = mean(ls_Pi_err .^ 2) .^ 0.5
-ls_cost = ADL.compute_cost(model, X_test, Y_dict_test)
+ls_pred_train = deflatten_model_forecast(model.forecast(X_train')', model.forecast_vars)
+ls_G_err_train = ls_pred_train[:, :, 1, :] - deflatten(Y_train_clean)[:, :, 1, :]
+ls_G_rmse_train = mean(ls_G_err_train .^ 2) .^ 0.5
+ls_Pi_err_train = ls_pred_train[:, :, 2, :] - deflatten(Y_train_clean)[:, :, 2, :]
+ls_Pi_rmse_train = mean(ls_Pi_err_train .^ 2) .^ 0.5
+ls_cost_train = ADL.compute_cost(model, X_train, Y_dict_train)
 
-println("Pretrained predictor test RMSE: G = $ls_G_rmse, Pi = $ls_Pi_rmse")
-println("Pretrained predictor test Cost: $ls_cost")
+ls_pred_test = deflatten_model_forecast(model.forecast(X_test')', model.forecast_vars)
+ls_G_err_test = ls_pred_test[:, :, 1, :] - deflatten(Y_test_clean)[:, :, 1, :]
+ls_G_rmse_test = mean(ls_G_err_test .^ 2) .^ 0.5
+ls_Pi_err_test = ls_pred_test[:, :, 2, :] - deflatten(Y_test_clean)[:, :, 2, :]
+ls_Pi_rmse_test = mean(ls_Pi_err_test .^ 2) .^ 0.5
+ls_cost_test = ADL.compute_cost(model, X_test, Y_dict_test)
 
+println("Pretrained predictor train RMSE: G = $ls_G_rmse_train, Pi = $ls_Pi_rmse_train")
+println("Pretrained predictor train Cost: $ls_cost_train")
+println("Pretrained predictor test RMSE: G = $ls_G_rmse_test, Pi = $ls_Pi_rmse_test")
+println("Pretrained predictor test Cost: $ls_cost_test")
 
 ####################################### PLOTS ANALYSIS ##########################################
 

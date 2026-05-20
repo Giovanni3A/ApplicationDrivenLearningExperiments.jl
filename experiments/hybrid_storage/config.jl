@@ -2,8 +2,8 @@
 # Follows matpower's config.jl pattern: toggles + hyperparams + paths.
 
 # Predictive model archetype
-model_type = :type   # :uni (single shared model), :type (one model by output type)
-pretrain = false
+model_type = :uni   # :uni (single shared model), :type (one model by output type), :many (models by project)
+pretrain = true
 
 # Network architecture
 N_HIDDEN_LAYERS = 2      # 0 = linear; >0 = MLP with ReLU

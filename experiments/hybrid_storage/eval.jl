@@ -28,7 +28,7 @@ function build_pred_model_from(path)
     if model_type == :uni
         Flux.loadmodel!(nn, state isa AbstractVector ? state[1] : state)
         return ApplicationDrivenLearning.PredictiveModel(nn)
-    elseif model_type == :type
+    elseif model_type in (:type, :many)
         Flux.loadmodel!(nns, state)
         return ApplicationDrivenLearning.PredictiveModel(nns, input_output_map)
     else
@@ -95,7 +95,7 @@ results_df = DataFrame(
 CSV.write(
     joinpath(
         result_path, 
-        "results_summary_$(ARCH_NAME)_$(N_HIDDEN_LAYERS).csv"
+        "results_summary_$(ARCH_NAME).csv"
     ), 
     results_df
 )
@@ -134,14 +134,14 @@ end
 CSV.write(
     joinpath(
         result_path, 
-        "forecasts_train_$(ARCH_NAME)_$(N_HIDDEN_LAYERS).csv"
+        "forecasts_train_$(ARCH_NAME).csv"
     ), 
     forecast_train_df
 )
 CSV.write(
     joinpath(
         result_path, 
-        "forecasts_test_$(ARCH_NAME)_$(N_HIDDEN_LAYERS).csv"
+        "forecasts_test_$(ARCH_NAME).csv"
     ), 
     forecast_test_df
 )

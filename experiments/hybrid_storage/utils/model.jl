@@ -221,15 +221,28 @@ for (pidx, pid) in enumerate(PROJECT_IDS)
     end
 end
 
-# --- input_output_map for the :type (G/π split) PredictiveModel ---
+# --- input_output_map for multi-network archetypes ---
 # Forecast vector order must match the corresponding network output order: column-major
 # iteration over [h, p], identical to the iteration used to build _G_TARGET_IDX / _PI_TARGET_IDX.
-g_forecast_vars = vec([G_fc[h, p] for h = 1:H, p = 1:N_PROJ])
-pi_forecast_vars = vec([pi_fc[h, p] for h = 1:H, p = 1:N_PROJ])
-input_output_map =
-    Vector{Dict{Vector{Int64},Vector{ADL.Forecast}}}()
-push!(input_output_map, Dict(g_feat_idx => g_forecast_vars))
-push!(input_output_map, Dict(pi_feat_idx => pi_forecast_vars))
+input_output_map = Vector{Dict{Vector{Int64},Vector{ADL.Forecast}}}()
+if model_type == :type
+    # One Dict per network, one entry per Dict — each subnet emits all projects' targets.
+    g_forecast_vars = vec([G_fc[h, p] for h = 1:H, p = 1:N_PROJ])
+    pi_forecast_vars = vec([pi_fc[h, p] for h = 1:H, p = 1:N_PROJ])
+    push!(input_output_map, Dict(g_feat_idx => g_forecast_vars))
+    push!(input_output_map, Dict(pi_feat_idx => pi_forecast_vars))
+elseif model_type == :many
+    # One Dict per network, N_PROJ entries per Dict — the shared subnet is invoked
+    # once per project with that project's input slice and its forecast variables.
+    g_dict = Dict{Vector{Int64},Vector{ADL.Forecast}}()
+    pi_dict = Dict{Vector{Int64},Vector{ADL.Forecast}}()
+    for p = 1:N_PROJ
+        g_dict[g_feat_idx_per_proj[p]] = vec(G_fc[:, p])
+        pi_dict[pi_feat_idx_per_proj[p]] = vec(pi_fc[:, p])
+    end
+    push!(input_output_map, g_dict)
+    push!(input_output_map, pi_dict)
+end
 
 function deflatten_model_forecast(y, forecast_vars::Vector{ADL.Forecast})
     # Convert vector of Forecasts (ordered by h, then pidx) into a 4D array (T x N_PROJ x 2 x N_SAMPLES).
