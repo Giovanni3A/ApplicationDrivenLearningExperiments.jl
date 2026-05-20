@@ -220,3 +220,32 @@ for (pidx, pid) in enumerate(PROJECT_IDS)
         Y_dict_test[pi_fc[h, pidx]] = Y_test_clean[:, y_idx_pi(pidx, h)]
     end
 end
+
+# --- input_output_map for the :type (G/π split) PredictiveModel ---
+# Forecast vector order must match the corresponding network output order: column-major
+# iteration over [h, p], identical to the iteration used to build _G_TARGET_IDX / _PI_TARGET_IDX.
+g_forecast_vars = vec([G_fc[h, p] for h = 1:H, p = 1:N_PROJ])
+pi_forecast_vars = vec([pi_fc[h, p] for h = 1:H, p = 1:N_PROJ])
+input_output_map =
+    Vector{Dict{Vector{Int64},Vector{ADL.Forecast}}}()
+push!(input_output_map, Dict(g_feat_idx => g_forecast_vars))
+push!(input_output_map, Dict(pi_feat_idx => pi_forecast_vars))
+
+function deflatten_model_forecast(y, forecast_vars::Vector{ADL.Forecast})
+    # Convert vector of Forecasts (ordered by h, then pidx) into a 4D array (T x N_PROJ x 2 x N_SAMPLES).
+    # We don't know the ordering, so we have to look up the forecast variables vector.
+    var_to_idx = Dict(var => idx for (idx, var) in enumerate(forecast_vars))
+
+    y_out = zeros(Float32, size(y, 1), H, 2, N_PROJ)
+    for pidx in 1:N_PROJ
+        for h in 1:H
+            g_var = G_fc[h, pidx]
+            pi_var = pi_fc[h, pidx]
+            g_idx = var_to_idx[g_var]
+            pi_idx = var_to_idx[pi_var]
+            y_out[:, h, 1, pidx] = y[:, g_idx]
+            y_out[:, h, 2, pidx] = y[:, pi_idx]
+        end
+    end
+    return y_out
+end

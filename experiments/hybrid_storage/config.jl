@@ -2,7 +2,7 @@
 # Follows matpower's config.jl pattern: toggles + hyperparams + paths.
 
 # Predictive model archetype
-model_type = 1   # 1 = uni (one shared model), 2 = many (per-project models), 3 = multi (joint multivariate)
+model_type = :type   # :uni (single shared model), :type (one model by output type)
 pretrain = false
 
 # Network architecture
@@ -25,7 +25,7 @@ COMPUTE_EVERY = 10
 TIME_LIMIT = 60 * 30
 
 # Output paths
-const ARCH_NAME = model_type == 1 ? "uni" : model_type == 2 ? "many" : "multi"
+const ARCH_NAME = String(model_type)
 result_path = joinpath(@__DIR__, "results", "size_$(N_HIDDEN_LAYERS)")
 isdir(result_path) || mkpath(result_path)
 

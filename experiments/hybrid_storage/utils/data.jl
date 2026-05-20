@@ -81,6 +81,14 @@ function tonumeric(col)::Vector{Float32}
     return Float32.(coalesce.(col, NaN))
 end
 
+# prices have to be clipped
+for col in target_names
+    if occursin("pi_lead", col)
+        df[!, col] = clamp.(tonumeric(df[!, col]), -250, 5000)
+    end
+end
+
+
 function build_xy(df_sub::SubDataFrame)
     X = reduce(hcat, [tonumeric(df_sub[!, c]) for c in feature_names])
     Y = reduce(hcat, [tonumeric(df_sub[!, c]) for c in target_names])
@@ -160,23 +168,6 @@ println("  X_test:  $(size(X_test))     Y_test:  $(size(Y_test))")
 y_idx_G(pidx, h) = (pidx - 1) * N_OUTPUTS_PER_PROJ + h
 y_idx_pi(pidx, h) = (pidx - 1) * N_OUTPUTS_PER_PROJ + H + h
 
-# Un-standardized physical values (variables × scalar constants → linear).
-function _G_phys_plan(h, pidx)
-    return G_fc[h, pidx].plan #* std_Y[y_idx_G(pidx, h)] + mu_Y[y_idx_G(pidx, h)]
-end
-function _G_phys_assess(h, pidx)
-    return G_fc[h, pidx].assess #* std_Y[y_idx_G(pidx, h)] +
-        #    mu_Y[y_idx_G(pidx, h)]
-end
-function _pi_phys_plan(h, pidx)
-    return pi_fc[h, pidx].plan #* std_Y[y_idx_pi(pidx, h)] +
-        #    mu_Y[y_idx_pi(pidx, h)]
-end
-function _pi_phys_assess(h, pidx)
-    return pi_fc[h, pidx].assess #* std_Y[y_idx_pi(pidx, h)] +
-        #    mu_Y[y_idx_pi(pidx, h)]
-end
-
 function deflatten(x::AbstractMatrix)
     return reshape(x, size(x, 1), H, 2, N_PROJ)
 end
@@ -184,17 +175,6 @@ end
 function deflatten(x::AbstractVector)
     return reshape(x, H, 2, N_PROJ)
 end
-
-function denormalize_and_deflatten(x::AbstractMatrix)
-    return deflatten(x .* std_Y .+ mu_Y)
-end
-
-function denormalize_and_deflatten(x::AbstractVector)
-    return deflatten(x .* std_Y .+ mu_Y)
-end
-
-deflattened_Y_train = deflatten(Y_train_clean)
-deflattened_Y_test = deflatten(Y_test_clean)
 
 # Output reparametrization: enforce G_phys >= 0 inside the network instead of
 # via LP slack penalties. Maps z_norm → ((softplus(z_norm·std + μ) − μ)/std) on G
@@ -209,7 +189,44 @@ end
 const _MU_Y_VEC = Float32.(vec(mu_Y))
 const _STD_Y_VEC = Float32.(vec(std_Y))
 
-function nonneg_g_output(z::AbstractArray)
+# --- Per-target activations for the multi (G/π split) model ---
+# Output indices ordered to match vec(G_fc) / vec(pi_fc) (column-major: h varies, then p).
+const _G_TARGET_IDX = vec([y_idx_G(p, h) for h = 1:H, p = 1:N_PROJ])
+const _PI_TARGET_IDX = vec([y_idx_pi(p, h) for h = 1:H, p = 1:N_PROJ])
+
+const _STD_Y_G = _STD_Y_VEC[_G_TARGET_IDX]
+const _STD_Y_PI = _STD_Y_VEC[_PI_TARGET_IDX]
+const _MU_Y_PI = _MU_Y_VEC[_PI_TARGET_IDX]
+
+# Feature partitioning (calendar shared; gen lags → G; price lags + DAM → π).
+const _CAL_FEAT_NAMES =
+    ["hour_sin", "hour_cos", "month_sin", "month_cos", "is_weekend"]
+const _GEN_LAG_FEAT_NAMES = vec([
+    "$(p)_hsl_lag$(n)" for
+    (p, n) in Base.product(String.(PROJECT_IDS), [1, 2, 6, 24])
+])
+const _PI_LAG_FEAT_NAMES = vec([
+    "$(p)_pi_lag$(n)" for
+    (p, n) in Base.product(String.(PROJECT_IDS), [1, 2, 6, 24])
+])
+const _DAM_FEAT_NAMES = ["$(p)_dam" for p in String.(PROJECT_IDS)]
+
+const g_feat_names = vcat(_CAL_FEAT_NAMES, _GEN_LAG_FEAT_NAMES)
+const pi_feat_names = vcat(_CAL_FEAT_NAMES, _PI_LAG_FEAT_NAMES, _DAM_FEAT_NAMES)
+const g_feat_idx = findall(in(g_feat_names), feature_names)
+const pi_feat_idx = findall(in(pi_feat_names), feature_names)
+
+# G activation: softplus * std (matches the G branch of nonneg_g_output — no μ added).
+function g_output_activation(z::AbstractArray)
+    return Flux.softplus.(z) .* _STD_Y_G
+end
+
+# π activation: regular affine (no positivity constraint).
+function pi_output_activation(z::AbstractArray)
+    return z .* _STD_Y_PI .+ _MU_Y_PI
+end
+
+function concat_z_activation(z::AbstractArray)
     z_phys = z .* _STD_Y_VEC .+ _MU_Y_VEC
     z_norm_pos = Flux.softplus.(z) .* _STD_Y_VEC
     return _G_OUT_MASK .* z_norm_pos .+ (1.0f0 .- _G_OUT_MASK) .* z_phys

@@ -21,10 +21,18 @@ JQM = JobQueueMPI
 include("config.jl")
 include("utils/constants.jl")
 include("utils/data.jl")
+pretrain = false
 include("utils/pretrain.jl")
 include("utils/model.jl")
 
-pred_model = ApplicationDrivenLearning.PredictiveModel(nn)
+if model_type == :uni
+    pred_model = ApplicationDrivenLearning.PredictiveModel(nn)
+elseif model_type == :type
+    pred_model =
+        ApplicationDrivenLearning.PredictiveModel(nns, input_output_map)
+else
+    error("model_type $model_type not implemented")
+end
 ApplicationDrivenLearning.set_forecast_model(model, pred_model)
 
 time1 = time()
@@ -46,7 +54,7 @@ sol = ApplicationDrivenLearning.train!(
 if JQM.is_controller_process()
     println("GradientMode training time: $(time() - time1)")
 
-    gd_pred = deflatten(model.forecast(X_test')')
+    gd_pred = deflatten_model_forecast(model.forecast(X_test')', model.forecast_vars)
     gd_G_err = gd_pred[:, :, 1, :] - deflatten(Y_test_clean)[:, :, 1, :]
     gd_G_rmse = mean(gd_G_err .^ 2) .^ 0.5
     gd_Pi_err = gd_pred[:, :, 2, :] - deflatten(Y_test_clean)[:, :, 2, :]

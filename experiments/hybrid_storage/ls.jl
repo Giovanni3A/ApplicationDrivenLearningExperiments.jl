@@ -17,10 +17,18 @@ import ApplicationDrivenLearning
 include("config.jl")
 include("utils/constants.jl")
 include("utils/data.jl")
+pretrain = true
 include("utils/pretrain.jl")
 include("utils/model.jl")
 
-pred_model = ApplicationDrivenLearning.PredictiveModel(nn)
+if model_type == :uni
+    pred_model = ApplicationDrivenLearning.PredictiveModel(nn)
+elseif model_type == :type
+    pred_model =
+        ApplicationDrivenLearning.PredictiveModel(nns, input_output_map)
+else
+    error("model_type $model_type not implemented")
+end
 ApplicationDrivenLearning.set_forecast_model(model, pred_model)
 
 # Baseline metrics from the pretrained predictor.

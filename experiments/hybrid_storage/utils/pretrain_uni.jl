@@ -1,10 +1,10 @@
-# Archetype 1: uni — one Dense network applied to the full dataset
+# Archetype :uni — one Dense network applied to the full dataset
 
 INPUT_SIZE = length(feature_names)
 OUTPUT_SIZE = length(target_names)
 
 if N_HIDDEN_LAYERS == 0
-    nn = Flux.Chain(Flux.Dense(INPUT_SIZE => OUTPUT_SIZE), nonneg_g_output)
+    nn = Flux.Chain(Flux.Dense(INPUT_SIZE => OUTPUT_SIZE), concat_z_activation)
 else
     layers = Any[Flux.Dense(INPUT_SIZE => HIDDEN_SIZE), Flux.relu]
     for _ = 1:(N_HIDDEN_LAYERS-1)
@@ -12,7 +12,7 @@ else
         push!(layers, Flux.relu)
     end
     push!(layers, Flux.Dense(HIDDEN_SIZE => OUTPUT_SIZE))
-    push!(layers, nonneg_g_output)
+    push!(layers, concat_z_activation)
     nn = Flux.Chain(layers...)
 end
 

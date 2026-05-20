@@ -20,42 +20,131 @@ include("utils/constants.jl")
 include("utils/data.jl")
 include("utils/model.jl")
 
-## uni
-model_type = 1
 pretrain = false
 include("utils/pretrain.jl")
 
+function build_pred_model_from(path)
+    state = JLD2.load(path, "state")
+    if model_type == :uni
+        Flux.loadmodel!(nn, state isa AbstractVector ? state[1] : state)
+        return ApplicationDrivenLearning.PredictiveModel(nn)
+    elseif model_type == :type
+        Flux.loadmodel!(nns, state)
+        return ApplicationDrivenLearning.PredictiveModel(nns, input_output_map)
+    else
+        error("model_type $model_type not implemented")
+    end
+end
+
 # LS
-model_state_load = JLD2.load(pretrained_model_state, "state")
-Flux.loadmodel!(nn, model_state_load)
-pred_model = ApplicationDrivenLearning.PredictiveModel(nn)
+pred_model = build_pred_model_from(pretrained_model_state)
 ApplicationDrivenLearning.set_forecast_model(model, pred_model)
 
-ls_pred = deflatten(model.forecast(X_test')')
-ls_G_err = ls_pred[:, :, 1, :] - deflatten(Y_test_clean)[:, :, 1, :]
-ls_G_rmse = mean(ls_G_err .^ 2) .^ 0.5
-ls_Pi_err = ls_pred[:, :, 2, :] - deflatten(Y_test_clean)[:, :, 2, :]
-ls_Pi_rmse = mean(ls_Pi_err .^ 2) .^ 0.5
-ls_cost = ADL.compute_cost(model, X_test, Y_dict_test)
+ls_pred_train = deflatten_model_forecast(model.forecast(X_train')', model.forecast_vars)
+ls_G_err_train = ls_pred_train[:, :, 1, :] - deflatten(Y_train_clean)[:, :, 1, :]
+ls_G_rmse_train = mean(ls_G_err_train .^ 2) .^ 0.5
+ls_Pi_err_train = ls_pred_train[:, :, 2, :] - deflatten(Y_train_clean)[:, :, 2, :]
+ls_Pi_rmse_train = mean(ls_Pi_err_train .^ 2) .^ 0.5
+ls_cost_train = ADL.compute_cost(model, X_train, Y_dict_train)
 
-println("Pretrained predictor test RMSE: G = $ls_G_rmse, Pi = $ls_Pi_rmse")
-println("Pretrained predictor test Cost: $ls_cost")
+ls_pred_test = deflatten_model_forecast(model.forecast(X_test')', model.forecast_vars)
+ls_G_err_test = ls_pred_test[:, :, 1, :] - deflatten(Y_test_clean)[:, :, 1, :]
+ls_G_rmse_test = mean(ls_G_err_test .^ 2) .^ 0.5
+ls_Pi_err_test = ls_pred_test[:, :, 2, :] - deflatten(Y_test_clean)[:, :, 2, :]
+ls_Pi_rmse_test = mean(ls_Pi_err_test .^ 2) .^ 0.5
+ls_cost_test = ADL.compute_cost(model, X_test, Y_dict_test)
+
+println("Pretrained predictor train RMSE: G = $ls_G_rmse_train, Pi = $ls_Pi_rmse_train")
+println("Pretrained predictor train Cost: $ls_cost_train")
+println("Pretrained predictor test RMSE: G = $ls_G_rmse_test, Pi = $ls_Pi_rmse_test")
+println("Pretrained predictor test Cost: $ls_cost_test")
 
 # ADL
-model_state_load = JLD2.load(final_model_state, "state")
-Flux.loadmodel!(nn, model_state_load[1])
-pred_model = ApplicationDrivenLearning.PredictiveModel(nn)
+pred_model = build_pred_model_from(final_model_state)
 ApplicationDrivenLearning.set_forecast_model(model, pred_model)
 
-gd_pred = deflatten(model.forecast(X_test')')
-gd_G_err = gd_pred[:, :, 1, :] - deflatten(Y_test_clean)[:, :, 1, :]
-gd_G_rmse = mean(gd_G_err .^ 2) .^ 0.5
-gd_Pi_err = gd_pred[:, :, 2, :] - deflatten(Y_test_clean)[:, :, 2, :]
-gd_Pi_rmse = mean(gd_Pi_err .^ 2) .^ 0.5
-gd_cost = ADL.compute_cost(model, X_test, Y_dict_test)
+gd_pred_train = deflatten_model_forecast(model.forecast(X_train')', model.forecast_vars)
+gd_G_err_train = gd_pred_train[:, :, 1, :] - deflatten(Y_train_clean)[:, :, 1, :]
+gd_G_rmse_train = mean(gd_G_err_train .^ 2) .^ 0.5
+gd_Pi_err_train = gd_pred_train[:, :, 2, :] - deflatten(Y_train_clean)[:, :, 2, :]
+gd_Pi_rmse_train = mean(gd_Pi_err_train .^ 2) .^ 0.5
+gd_cost_train = ADL.compute_cost(model, X_train, Y_dict_train)
 
-println("Gradient-mode predictor test RMSE: G = $gd_G_rmse, Pi = $gd_Pi_rmse")
-println("Gradient-mode predictor test Cost: $gd_cost")
+gd_pred_test = deflatten_model_forecast(model.forecast(X_test')', model.forecast_vars)
+gd_G_err_test = gd_pred_test[:, :, 1, :] - deflatten(Y_test_clean)[:, :, 1, :]
+gd_G_rmse_test = mean(gd_G_err_test .^ 2) .^ 0.5
+gd_Pi_err_test = gd_pred_test[:, :, 2, :] - deflatten(Y_test_clean)[:, :, 2, :]
+gd_Pi_rmse_test = mean(gd_Pi_err_test .^ 2) .^ 0.5
+gd_cost_test = ADL.compute_cost(model, X_test, Y_dict_test)
+
+println("Gradient-mode predictor train RMSE: G = $gd_G_rmse_train, Pi = $gd_Pi_rmse_train")
+println("Gradient-mode predictor train Cost: $gd_cost_train")
+println("Gradient-mode predictor test RMSE: G = $gd_G_rmse_test, Pi = $gd_Pi_rmse_test")
+println("Gradient-mode predictor test Cost: $gd_cost_test")
+
+# save results to CSV
+results_df = DataFrame(
+    Model = ["Pretrained", "ADL Gradient"],
+    Train_G_RMSE = [ls_G_rmse_train, gd_G_rmse_train],
+    Train_Pi_RMSE = [ls_Pi_rmse_train, gd_Pi_rmse_train],
+    Train_Cost = [ls_cost_train, gd_cost_train],
+    Test_G_RMSE = [ls_G_rmse_test, gd_G_rmse_test],
+    Test_Pi_RMSE = [ls_Pi_rmse_test, gd_Pi_rmse_test],
+    Test_Cost = [ls_cost_test, gd_cost_test],
+)
+CSV.write(
+    joinpath(
+        result_path, 
+        "results_summary_$(ARCH_NAME)_$(N_HIDDEN_LAYERS).csv"
+    ), 
+    results_df
+)
+
+# dataframe with LS, GD (train and test) forecasts
+forecast_train_df = DataFrame()
+forecast_test_df = DataFrame()
+for t in 1:size(X_test, 1)
+    for pidx in 1:N_PROJ
+        for h in 1:H
+            push!(forecast_train_df, (
+                t = t,
+                project = pidx,
+                hour = h,
+                G_actual = deflatten(Y_train_clean)[t, h, 1, pidx],
+                Pi_actual = deflatten(Y_train_clean)[t, h, 2, pidx],
+                G_LS = ls_pred_train[t, h, 1, pidx],
+                Pi_LS = ls_pred_train[t, h, 2, pidx],
+                G_GD = gd_pred_train[t, h, 1, pidx],
+                Pi_GD = gd_pred_train[t, h, 2, pidx],
+            ))
+            push!(forecast_test_df, (
+                t = t,
+                project = pidx,
+                hour = h,
+                G_actual = deflatten(Y_test_clean)[t, h, 1, pidx],
+                Pi_actual = deflatten(Y_test_clean)[t, h, 2, pidx],
+                G_LS = ls_pred_test[t, h, 1, pidx],
+                Pi_LS = ls_pred_test[t, h, 2, pidx],
+                G_GD = gd_pred_test[t, h, 1, pidx],
+                Pi_GD = gd_pred_test[t, h, 2, pidx],
+            ))
+        end
+    end
+end
+CSV.write(
+    joinpath(
+        result_path, 
+        "forecasts_train_$(ARCH_NAME)_$(N_HIDDEN_LAYERS).csv"
+    ), 
+    forecast_train_df
+)
+CSV.write(
+    joinpath(
+        result_path, 
+        "forecasts_test_$(ARCH_NAME)_$(N_HIDDEN_LAYERS).csv"
+    ), 
+    forecast_test_df
+)
 
 # Visualize forecasts vs actuals for a single test sample
 
