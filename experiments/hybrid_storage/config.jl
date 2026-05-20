@@ -17,12 +17,12 @@ PRETRAIN_BATCH_SIZE = 256            # -1 = full batch
 PRETRAIN_CONV_TOL = 1e-7
 PRETRAIN_CONV_PATIENCE = 30
 
-# Decision-focused training hyperparameters (used when run_mode == 2)
+# Decision-focused training hyperparameters
 N_EPOCHS = 1000
 BATCH_SIZE = 64
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 1e-4
 COMPUTE_EVERY = 10
-TIME_LIMIT = 60 * 60
+TIME_LIMIT = 60 * 30
 
 # Output paths
 const ARCH_NAME = model_type == 1 ? "uni" : model_type == 2 ? "many" : "multi"
