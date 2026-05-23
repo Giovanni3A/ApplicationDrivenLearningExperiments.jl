@@ -55,24 +55,32 @@ feature_names = [
 ]
 
 # 5. Build target columns: <proj>_g_lead_h and <proj>_pi_lead_h for h = 1..H.
-#    Layout per project: [G_lead1..G_lead24, π_lead1..π_lead24] (block-per-quantity,
-#    so the per-project output slice is the first 24 cols = G and next 24 = π).
-#    Lead-h target at row i is the raw value at row i+h. Last h rows get `missing`.
+#    Layout matches the ADL forecast_vars order built in model.jl: all G first
+#    (project outer, horizon inner), then all π in the same order. Lead-h target
+#    at row i is the raw value at row i+h; last h rows get `missing`.
 n = nrow(df)
-target_names = String[]
 for pid in PROJECT_IDS
     pids = String(pid)
     src_g = "$(pids)_hsl"
     src_pi = "$(pids)_pi"
     for h = 1:H
-        g_col = "$(pids)_g_lead$h"
-        df[!, g_col] = vcat(df[(h+1):end, src_g], fill(missing, h))
-        push!(target_names, g_col)
+        df[!, "$(pids)_g_lead$h"] =
+            vcat(df[(h+1):end, src_g], fill(missing, h))
+        df[!, "$(pids)_pi_lead$h"] =
+            vcat(df[(h+1):end, src_pi], fill(missing, h))
     end
+end
+target_names = String[]
+for pid in PROJECT_IDS
+    pids = String(pid)
     for h = 1:H
-        pi_col = "$(pids)_pi_lead$h"
-        df[!, pi_col] = vcat(df[(h+1):end, src_pi], fill(missing, h))
-        push!(target_names, pi_col)
+        push!(target_names, "$(pids)_g_lead$h")
+    end
+end
+for pid in PROJECT_IDS
+    pids = String(pid)
+    for h = 1:H
+        push!(target_names, "$(pids)_pi_lead$h")
     end
 end
 
@@ -164,16 +172,25 @@ println("  targets:  $(length(target_names))")
 println("  X_train: $(size(X_train))    Y_train: $(size(Y_train))")
 println("  X_test:  $(size(X_test))     Y_test:  $(size(Y_test))")
 
-# Helpers: indices into Y for each (project, horizon, variable).
-y_idx_G(pidx, h) = (pidx - 1) * N_OUTPUTS_PER_PROJ + h
-y_idx_pi(pidx, h) = (pidx - 1) * N_OUTPUTS_PER_PROJ + H + h
+# Helpers: indices into Y for each (project, horizon, variable). Y is laid out as
+# all G entries (project outer, horizon inner), then all π entries the same way —
+# matching the ADL forecast_vars order assembled in model.jl.
+y_idx_G(pidx, h) = (pidx - 1) * H + h
+y_idx_pi(pidx, h) = N_PROJ * H + (pidx - 1) * H + h
 
+# Reshape a flat target row (or matrix of rows) into a per-(hour, channel, project)
+# view. Y columns are laid out as all G (p outer, h inner) then all π same way;
+# reshape naturally gives (..., H, N_PROJ, 2), and we permute so callers can keep
+# using the (..., H, 2, N_PROJ) — i.e. channel-before-project — indexing.
 function deflatten(x::AbstractMatrix)
-    return reshape(x, size(x, 1), H, 2, N_PROJ)
+    return PermutedDimsArray(
+        reshape(x, size(x, 1), H, N_PROJ, 2),
+        (1, 2, 4, 3),
+    )
 end
 
 function deflatten(x::AbstractVector)
-    return reshape(x, H, 2, N_PROJ)
+    return PermutedDimsArray(reshape(x, H, N_PROJ, 2), (1, 3, 2))
 end
 
 # Output reparametrization: enforce G_phys >= 0 inside the network instead of

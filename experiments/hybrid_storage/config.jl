@@ -22,7 +22,7 @@ N_EPOCHS = 1000
 BATCH_SIZE = 64
 LEARNING_RATE = 1e-4
 COMPUTE_EVERY = 10
-TIME_LIMIT = 60 * 30
+TIME_LIMIT = 60 * 60
 
 # Output paths
 const ARCH_NAME = String(model_type)
