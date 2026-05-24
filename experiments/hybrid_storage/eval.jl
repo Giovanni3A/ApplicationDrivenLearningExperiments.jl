@@ -36,26 +36,39 @@ function build_pred_model_from(path)
     end
 end
 
-function compute_sales_profit(model, X, Y_dict)
+function compute_assess_metrics(model, X, Y_dict)
     Y_matrix = ADL.dict_to_var_indexed_matrix(Y_dict, model.forecast_vars)
+    # Sales: π_actual · sale.assess (committed sale revenue at realized prices)
     sales = Matrix{Float64}(undef, size(X, 1), N_PROJ)
+    # BuyCost: π_actual · assess_buy (RT imbalance cost to cover shortfall vs. commitment)
+    buy_cost = Matrix{Float64}(undef, size(X, 1), N_PROJ)
+    # Battery arbitrage: Σ_h π_actual · (discharge_h − charge_h). Captures the
+    # price-arbitrage P&L of the storage policy, isolating the charge/discharge
+    # decisions from the underlying generation that would be sold anyway.
+    arbitrage = Matrix{Float64}(undef, size(X, 1), N_PROJ)
     for t in 1:size(X, 1)
         if t % 1000 == 0
-            println("Computing sales for sample $t / $(size(X, 1))")
+            println("Computing assess metrics for sample $t / $(size(X, 1))")
         end
         y = Y_matrix[t, :]
         ADL.compute_single_step_cost(
-            model, 
-            y, 
+            model,
+            y,
             model.forecast(X[t, :])
         )
-        sales[t, :] = sum(
-            deflatten(y)[:, 2, :] .* 
-            JuMP.value.(ADL.Assess(model)[:assess_sale]),
-            dims = 1
+        pi_actual = deflatten(y)[:, 2, :]
+        sale_vals = JuMP.value.([sale[h, p].assess for h in 1:H, p in 1:N_PROJ])
+        buy_vals = JuMP.value.(ADL.Assess(model)[:assess_buy])
+        discharge_vals = JuMP.value.([discharge[h, p].assess for h in 1:H, p in 1:N_PROJ])
+        charge_vals = JuMP.value.([charge[h, p].assess for h in 1:H, p in 1:N_PROJ])
+        sales[t, :] = sum(pi_actual .* sale_vals, dims = 1)
+        buy_cost[t, :] = sum(pi_actual .* buy_vals, dims = 1)
+        arbitrage[t, :] = sum(
+            pi_actual .* (discharge_vals .- charge_vals),
+            dims = 1,
         )
     end
-    return sales
+    return sales, buy_cost, arbitrage
 end
 
 # LS
@@ -68,7 +81,7 @@ ls_G_rmse_train = mean(ls_G_err_train .^ 2) .^ 0.5
 ls_Pi_err_train = ls_pred_train[:, :, 2, :] - deflatten(Y_train_clean)[:, :, 2, :]
 ls_Pi_rmse_train = mean(ls_Pi_err_train .^ 2) .^ 0.5
 ls_cost_train = ADL.compute_cost(model, X_train, Y_dict_train)
-ls_sales_train = compute_sales_profit(model, X_train, Y_dict_train)
+ls_sales_train, ls_buy_train, ls_arb_train = compute_assess_metrics(model, X_train, Y_dict_train)
 
 ls_pred_test = deflatten_model_forecast(model.forecast(X_test')', model.forecast_vars)
 ls_G_err_test = ls_pred_test[:, :, 1, :] - deflatten(Y_test_clean)[:, :, 1, :]
@@ -76,14 +89,18 @@ ls_G_rmse_test = mean(ls_G_err_test .^ 2) .^ 0.5
 ls_Pi_err_test = ls_pred_test[:, :, 2, :] - deflatten(Y_test_clean)[:, :, 2, :]
 ls_Pi_rmse_test = mean(ls_Pi_err_test .^ 2) .^ 0.5
 ls_cost_test = ADL.compute_cost(model, X_test, Y_dict_test)
-ls_sales_test = compute_sales_profit(model, X_test, Y_dict_test)
+ls_sales_test, ls_buy_test, ls_arb_test = compute_assess_metrics(model, X_test, Y_dict_test)
 
 println("Pretrained predictor train RMSE: G = $ls_G_rmse_train, Pi = $ls_Pi_rmse_train")
 println("Pretrained predictor train Cost: $ls_cost_train")
 println("Pretrained predictor train Sales: $(mean(ls_sales_train))")
+println("Pretrained predictor train BuyCost: $(mean(ls_buy_train))")
+println("Pretrained predictor train Arbitrage: $(mean(ls_arb_train))")
 println("Pretrained predictor test RMSE: G = $ls_G_rmse_test, Pi = $ls_Pi_rmse_test")
 println("Pretrained predictor test Cost: $ls_cost_test")
 println("Pretrained predictor test Sales: $(mean(ls_sales_test))")
+println("Pretrained predictor test BuyCost: $(mean(ls_buy_test))")
+println("Pretrained predictor test Arbitrage: $(mean(ls_arb_test))")
 
 # ADL
 pred_model = build_pred_model_from(final_model_state)
@@ -95,7 +112,7 @@ gd_G_rmse_train = mean(gd_G_err_train .^ 2) .^ 0.5
 gd_Pi_err_train = gd_pred_train[:, :, 2, :] - deflatten(Y_train_clean)[:, :, 2, :]
 gd_Pi_rmse_train = mean(gd_Pi_err_train .^ 2) .^ 0.5
 gd_cost_train = ADL.compute_cost(model, X_train, Y_dict_train)
-gd_sales_train = compute_sales_profit(model, X_train, Y_dict_train)
+gd_sales_train, gd_buy_train, gd_arb_train = compute_assess_metrics(model, X_train, Y_dict_train)
 
 gd_pred_test = deflatten_model_forecast(model.forecast(X_test')', model.forecast_vars)
 gd_G_err_test = gd_pred_test[:, :, 1, :] - deflatten(Y_test_clean)[:, :, 1, :]
@@ -103,14 +120,18 @@ gd_G_rmse_test = mean(gd_G_err_test .^ 2) .^ 0.5
 gd_Pi_err_test = gd_pred_test[:, :, 2, :] - deflatten(Y_test_clean)[:, :, 2, :]
 gd_Pi_rmse_test = mean(gd_Pi_err_test .^ 2) .^ 0.5
 gd_cost_test = ADL.compute_cost(model, X_test, Y_dict_test)
-gd_sales_test = compute_sales_profit(model, X_test, Y_dict_test)
+gd_sales_test, gd_buy_test, gd_arb_test = compute_assess_metrics(model, X_test, Y_dict_test)
 
 println("Gradient-mode predictor train RMSE: G = $gd_G_rmse_train, Pi = $gd_Pi_rmse_train")
 println("Gradient-mode predictor train Cost: $gd_cost_train")
 println("Gradient-mode predictor train Sales: $(mean(gd_sales_train))")
+println("Gradient-mode predictor train BuyCost: $(mean(gd_buy_train))")
+println("Gradient-mode predictor train Arbitrage: $(mean(gd_arb_train))")
 println("Gradient-mode predictor test RMSE: G = $gd_G_rmse_test, Pi = $gd_Pi_rmse_test")
 println("Gradient-mode predictor test Cost: $gd_cost_test")
 println("Gradient-mode predictor test Sales: $(mean(gd_sales_test))")
+println("Gradient-mode predictor test BuyCost: $(mean(gd_buy_test))")
+println("Gradient-mode predictor test Arbitrage: $(mean(gd_arb_test))")
 
 # save results to CSV
 results_df = DataFrame(
@@ -119,10 +140,14 @@ results_df = DataFrame(
     Train_Pi_RMSE = [ls_Pi_rmse_train, gd_Pi_rmse_train],
     Train_Cost = [ls_cost_train, gd_cost_train],
     Train_Sales = [mean(ls_sales_train), mean(gd_sales_train)],
+    Train_BuyCost = [mean(ls_buy_train), mean(gd_buy_train)],
+    Train_Arbitrage = [mean(ls_arb_train), mean(gd_arb_train)],
     Test_G_RMSE = [ls_G_rmse_test, gd_G_rmse_test],
     Test_Pi_RMSE = [ls_Pi_rmse_test, gd_Pi_rmse_test],
     Test_Cost = [ls_cost_test, gd_cost_test],
     Test_Sales = [mean(ls_sales_test), mean(gd_sales_test)],
+    Test_BuyCost = [mean(ls_buy_test), mean(gd_buy_test)],
+    Test_Arbitrage = [mean(ls_arb_test), mean(gd_arb_test)],
 )
 CSV.write(
     joinpath(
@@ -150,6 +175,10 @@ for t in 1:size(X_test, 1)
                 Pi_GD = gd_pred_train[t, h, 2, pidx],
                 Sales_LS = ls_sales_train[t, pidx],
                 Sales_GD = gd_sales_train[t, pidx],
+                BuyCost_LS = ls_buy_train[t, pidx],
+                BuyCost_GD = gd_buy_train[t, pidx],
+                Arb_LS = ls_arb_train[t, pidx],
+                Arb_GD = gd_arb_train[t, pidx],
             ))
             push!(forecast_test_df, (
                 t = t,
@@ -163,6 +192,10 @@ for t in 1:size(X_test, 1)
                 Pi_GD = gd_pred_test[t, h, 2, pidx],
                 Sales_LS = ls_sales_test[t, pidx],
                 Sales_GD = gd_sales_test[t, pidx],
+                BuyCost_LS = ls_buy_test[t, pidx],
+                BuyCost_GD = gd_buy_test[t, pidx],
+                Arb_LS = ls_arb_test[t, pidx],
+                Arb_GD = gd_arb_test[t, pidx],
             ))
         end
     end
@@ -181,55 +214,3 @@ CSV.write(
     ), 
     forecast_test_df
 )
-
-# # Visualize forecasts vs actuals for a single test sample
-
-# t = 1
-
-# t_y = deflatten(Y_test_clean)[t, :, :, :]
-# g = t_y[:, 1, :]
-# pi = t_y[:, 2, :]
-
-# ls_ghat = ls_pred[t, :, 1, :]
-# ls_pihat = ls_pred[t, :, 2, :]
-# gd_ghat = gd_pred[t, :, 1, :]
-# gd_pihat = gd_pred[t, :, 2, :]
-
-# import Plots
-
-# # 3 x 2 grid with generation and actuals vs forecast for all three projects
-# fig_1_1 = Plots.plot(g[:, 1], label = "Actual G", title = "Project 1", xlabel = "Hour", ylabel = "MW")
-# Plots.plot!(ls_ghat[:, 1], label = "LS G", linestyle = :dash)
-# Plots.plot!(gd_ghat[:, 1], label = "GD G", linestyle = :dashdot)
-
-# fig_1_2 = Plots.plot(pi[:, 1], label = "Actual Pi", title = "Project 1", xlabel = "Hour", ylabel = "\$/MWh")
-# Plots.plot!(ls_pihat[:, 1], label = "LS Pi", linestyle = :dash)
-# Plots.plot!(gd_pihat[:, 1], label = "GD Pi", linestyle = :dashdot)
-
-# fig_2_1 = Plots.plot(g[:, 2], label = "Actual G", title = "Project 2", xlabel = "Hour", ylabel = "MW")
-# Plots.plot!(ls_ghat[:, 2], label = "LS G", linestyle = :dash)
-# Plots.plot!(gd_ghat[:, 2], label = "GD G", linestyle = :dashdot)
-
-# fig_2_2 = Plots.plot(pi[:, 2], label = "Actual Pi", title = "Project 2", xlabel = "Hour", ylabel = "\$/MWh")
-# Plots.plot!(ls_pihat[:, 2], label = "LS Pi", linestyle = :dash)
-# Plots.plot!(gd_pihat[:, 2], label = "GD Pi", linestyle = :dashdot)
-
-# fig_3_1 = Plots.plot(g[:, 3], label = "Actual G", title = "Project 3", xlabel = "Hour", ylabel = "MW")
-# Plots.plot!(ls_ghat[:, 3], label = "LS G", linestyle = :dash)
-# Plots.plot!(gd_ghat[:, 3], label = "GD G", linestyle = :dashdot)
-
-# fig_3_2 = Plots.plot(pi[:, 3], label = "Actual Pi", title = "Project 3", xlabel = "Hour", ylabel = "\$/MWh")
-# Plots.plot!(ls_pihat[:, 3], label = "LS Pi", linestyle = :dash)
-# Plots.plot!(gd_pihat[:, 3], label = "GD Pi", linestyle = :dashdot)
-
-# final_fig = Plots.plot(
-#     fig_1_1,
-#     fig_1_2,
-#     fig_2_1,
-#     fig_2_2,
-#     fig_3_1,
-#     fig_3_2;
-#     layout = (3, 2),
-#     size = (1200, 800),
-#     title = "Forecasts vs Actuals for Test Sample t=$t",
-# )

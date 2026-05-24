@@ -40,6 +40,18 @@ feature_names = [
     "month_sin",
     "month_cos",
     "is_weekend",
+    # system load forecast at start / mid / end of planning horizon
+    "load_total_forecast1",
+    "load_total_forecast12",
+    "load_total_forecast24",
+    # ERCOT-wide wind generation forecast at start / mid / end of horizon
+    "ercot_powerwind_forecast1",
+    "ercot_powerwind_forecast12",
+    "ercot_powerwind_forecast24",
+    # ERCOT-wide solar generation forecast at start / mid / end of horizon
+    "ercot_powersolar_forecast1",
+    "ercot_powersolar_forecast12",
+    "ercot_powersolar_forecast24",
     # generation lags
     [
         "$(p)_hsl_lag$(n)" for
@@ -215,7 +227,8 @@ const _STD_Y_G = _STD_Y_VEC[_G_TARGET_IDX]
 const _STD_Y_PI = _STD_Y_VEC[_PI_TARGET_IDX]
 const _MU_Y_PI = _MU_Y_VEC[_PI_TARGET_IDX]
 
-# Feature partitioning (calendar shared; gen lags → G; price lags + DAM → π).
+# Feature partitioning (calendar shared; gen lags + ERCOT-wide renewable forecasts → G;
+# price lags + DAM + system load forecast → π).
 const _CAL_FEAT_NAMES =
     ["hour_sin", "hour_cos", "month_sin", "month_cos", "is_weekend"]
 const _GEN_LAG_FEAT_NAMES = vec([
@@ -227,21 +240,45 @@ const _PI_LAG_FEAT_NAMES = vec([
     (p, n) in Base.product(String.(PROJECT_IDS), [1, 2, 6, 24])
 ])
 const _DAM_FEAT_NAMES = ["$(p)_dam" for p in String.(PROJECT_IDS)]
+const _LOAD_FORECAST_FEAT_NAMES =
+    ["load_total_forecast$(h)" for h in [1, 12, 24]]
+const _WIND_FORECAST_FEAT_NAMES =
+    ["ercot_powerwind_forecast$(h)" for h in [1, 12, 24]]
+const _SOLAR_FORECAST_FEAT_NAMES =
+    ["ercot_powersolar_forecast$(h)" for h in [1, 12, 24]]
 
-const g_feat_names = vcat(_CAL_FEAT_NAMES, _GEN_LAG_FEAT_NAMES)
-const pi_feat_names = vcat(_CAL_FEAT_NAMES, _PI_LAG_FEAT_NAMES, _DAM_FEAT_NAMES)
+const g_feat_names = vcat(
+    _CAL_FEAT_NAMES,
+    _GEN_LAG_FEAT_NAMES,
+    _WIND_FORECAST_FEAT_NAMES,
+    _SOLAR_FORECAST_FEAT_NAMES,
+)
+const pi_feat_names = vcat(
+    _CAL_FEAT_NAMES,
+    _PI_LAG_FEAT_NAMES,
+    _DAM_FEAT_NAMES,
+    _LOAD_FORECAST_FEAT_NAMES,
+)
 const g_feat_idx = findall(in(g_feat_names), feature_names)
 const pi_feat_idx = findall(in(pi_feat_names), feature_names)
 
 # Per-project feature subsets for the :many (shared-net, applied-per-project) model.
+# ERCOT-wide forecasts are system-level and shared across all projects (same columns
+# go into every per-project slice), keeping the input dimension constant across projects.
 const g_feat_names_per_proj = [
-    vcat(_CAL_FEAT_NAMES, ["$(String(p))_hsl_lag$(n)" for n in [1, 2, 6, 24]]) for p in PROJECT_IDS
+    vcat(
+        _CAL_FEAT_NAMES,
+        ["$(String(p))_hsl_lag$(n)" for n in [1, 2, 6, 24]],
+        _WIND_FORECAST_FEAT_NAMES,
+        _SOLAR_FORECAST_FEAT_NAMES,
+    ) for p in PROJECT_IDS
 ]
 const pi_feat_names_per_proj = [
     vcat(
         _CAL_FEAT_NAMES,
         ["$(String(p))_pi_lag$(n)" for n in [1, 2, 6, 24]],
         ["$(String(p))_dam"],
+        _LOAD_FORECAST_FEAT_NAMES,
     ) for p in PROJECT_IDS
 ]
 const g_feat_idx_per_proj =

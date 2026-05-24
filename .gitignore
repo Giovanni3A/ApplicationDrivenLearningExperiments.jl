@@ -24,3 +24,6 @@ venv/
 
 # Private project configuration (real resource/SPP/region identifiers + anon mapping)
 experiments/*/_project_config.py
+
+experiments/hybrid_storage/results/size_2/figures
+experiments/hybrid_storage/results/size_2/eda_*
