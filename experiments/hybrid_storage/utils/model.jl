@@ -14,7 +14,17 @@ model = ADL.Model()
 # --- Decision (Policy) variables — values in both Plan and Assess stages ---
 @variable(model, charge[1:H, 1:N_PROJ] >= 0.0, ADL.Policy)   # charge from renewables (MWh)
 @variable(model, discharge[1:H, 1:N_PROJ] >= 0.0, ADL.Policy)   # discharge to grid    (MWh)
-@variable(model, sale[1:H, 1:N_PROJ] >= 0.0, ADL.Policy)   # energy sold to grid (MWh)
+@variable(model, fc[i = 1:2, h = 1:H, pidx = 1:N_PROJ], ADL.Policy)
+
+@constraints(
+    ADL.Plan(model),
+    begin
+        [h = 1:H, pidx = 1:N_PROJ],
+        fc[1,h,pidx].plan == G_fc[h, pidx].plan
+        [h = 1:H, pidx = 1:N_PROJ],
+        fc[2,h,pidx].plan == pi_fc[h, pidx].plan
+    end
+)
 
 # --- Plan stage ---
 
@@ -22,8 +32,8 @@ model = ADL.Model()
     ADL.Plan(model),
     begin
         plan_shortfall[1:H, 1:N_PROJ] >= 0.0
-        plan_curtail[h = 1:H, pidx = 1:N_PROJ] >= 0.0
         plan_soc[1:H, 1:N_PROJ] >= 0.0
+        plan_sale[h = 1:H, pidx = 1:N_PROJ] >= 0.0
     end
 )
 
@@ -31,7 +41,7 @@ model = ADL.Model()
 @expression(
     ADL.Plan(model),
     plan_generator_output[h = 1:H, pidx = 1:N_PROJ],
-    G_fc[h, pidx].plan + plan_shortfall[h, pidx] - plan_curtail[h, pidx]
+    G_fc[h, pidx].plan + plan_shortfall[h, pidx]
 )
 @constraint(
     ADL.Plan(model),
@@ -43,7 +53,7 @@ model = ADL.Model()
 @constraint(
     ADL.Plan(model),
     [h = 1:H, pidx = 1:N_PROJ],
-    charge[h, pidx].plan + sale[h, pidx].plan ==
+    charge[h, pidx].plan + plan_sale[h, pidx] ==
     plan_generator_output[h, pidx] + discharge[h, pidx].plan
 )
 
@@ -98,7 +108,7 @@ model = ADL.Model()
     ADL.Plan(model),
     Min,
     -sum(
-        pi_fc[h, pidx].plan * sale[h, pidx].plan for h = 1:H, pidx = 1:N_PROJ
+        pi_fc[h, pidx].plan * plan_sale[h, pidx] for h = 1:H, pidx = 1:N_PROJ
     ) +
     PHANTOM_PENALTY * sum(plan_shortfall[h, pidx] for h = 1:H, pidx = 1:N_PROJ)
 )
@@ -107,37 +117,45 @@ model = ADL.Model()
 @variables(
     ADL.Assess(model),
     begin
-        assess_curtail[h = 1:H, pidx = 1:N_PROJ] >= 0.0
-        assess_buy[h = 1:H, pidx = 1:N_PROJ] >= 0.0
+        fc_err[i = 1:2, h = 1:H, pidx = 1:N_PROJ]
     end
+)
+
+@constraints(
+    ADL.Assess(model),
+    begin
+        [h = 1:H, pidx = 1:N_PROJ],
+        fc_err[1, h, pidx] >= G_fc[h, pidx].assess - fc[1, h, pidx].assess
+        [h = 1:H, pidx = 1:N_PROJ],
+        fc_err[1, h, pidx] >= -(G_fc[h, pidx].assess - fc[1, h, pidx].assess)
+        [h = 1:H, pidx = 1:N_PROJ],
+        fc_err[2, h, pidx] >= pi_fc[h, pidx].assess - fc[2, h, pidx].assess
+        [h = 1:H, pidx = 1:N_PROJ],
+        fc_err[2, h, pidx] >= -(pi_fc[h, pidx].assess - fc[2, h, pidx].assess)
+    end
+)
+
+# Balance constraint
+@expression(
+    ADL.Assess(model),
+    assess_sale[h = 1:H, pidx = 1:N_PROJ],
+    G_fc[h, pidx].assess + discharge[h, pidx].assess - charge[h, pidx].assess
 )
 
 @expression(
     ADL.Assess(model),
-    generator_output[h = 1:H, pidx = 1:N_PROJ],
-    G_fc[h, pidx].assess - assess_curtail[h, pidx]
-)
-@constraint(
-    ADL.Assess(model),
-    [h = 1:H, pidx = 1:N_PROJ],
-    generator_output[h, pidx] >= 0.0,
+    assess_profit[h = 1:H, pidx = 1:N_PROJ],
+        pi_fc[h, pidx].assess * assess_sale[h, pidx]
 )
 
-# Balance constraint
-@constraint(
-    ADL.Assess(model),
-    [h = 1:H, pidx = 1:N_PROJ],
-    charge[h, pidx].assess + sale[h, pidx].assess ==
-    generator_output[h, pidx] + discharge[h, pidx].assess + assess_buy[h, pidx]
-)
+LAMBDA = 0.01
 
 @objective(
     ADL.Assess(model),
     Min,
-    -sum(
-        pi_fc[h, pidx].assess * (sale[h, pidx].assess - assess_buy[h, pidx]) for h = 1:H,
-        pidx = 1:N_PROJ
-    ) + 1e-6 * sum(assess_buy)
+    sum(
+        -assess_profit[h, pidx] for h = 1:H, pidx = 1:N_PROJ
+    ) + LAMBDA * sum(fc_err)
 )
 
 set_optimizer(model, Gurobi.Optimizer)
