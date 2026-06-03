@@ -1,6 +1,6 @@
 # Project portfolio, BESS sizing, and problem dimensions for the hybrid_storage
 # experiment. Single source of truth — referenced by data.jl, model.jl, and the
-# pretrain_*.jl files. Values locked in PLAN.md.
+# pretrain_*.jl files.
 
 using Dates
 

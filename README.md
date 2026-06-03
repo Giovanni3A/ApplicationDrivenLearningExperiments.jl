@@ -279,6 +279,22 @@ root/
 │   │   ├─ config.jl # experiment parameters
 │   │   ├─ main.jl # script for running a full case
 │   │   └─ auto_run.jl # script for iteratively running multiple cases
+│   ├─ hybrid_storage/
+│   │   ├─ data/ # joined_hourly_anon.csv (ERCOT hourly data, anonymized)
+│   │   ├─ utils/
+│   │   │   ├─ constants.jl # project portfolio, BESS sizing, problem dimensions
+│   │   │   ├─ data.jl # CSV → standardized X/Y matrices and feature partitions
+│   │   │   ├─ model.jl # ADL Plan/Assess LP and input_output_map per archetype
+│   │   │   ├─ pretrain.jl # dispatches to the archetype-specific pretrain script
+│   │   │   └─ pretrain_{uni,type,many}.jl # network construction + MSE pretraining
+│   │   ├─ results/ # results summaries, forecasts and saved model states per size
+│   │   ├─ presentation/ # JuMP-Dev slide deck (Marp)
+│   │   ├─ config.jl # experiment parameters (archetype, network, hyperparameters)
+│   │   ├─ ls.jl # least-squares (pretrained predictor) baseline run
+│   │   ├─ opt.jl # decision-focused (GradientMPIMode) training run
+│   │   ├─ eval.jl # LS vs ADL vs Oracle metrics → results CSVs
+│   │   ├─ eda.jl # post-analysis plots and tables from results
+│   │   └─ main.jl # runs ls + opt + eval for all three archetypes
 ```
 
 ## Experiments Description
@@ -306,6 +322,16 @@ Knapsack problem from PyEPO (https://arxiv.org/abs/2206.14234). This takes data 
 ### Matpower
 
 Loads system files from PGLib-OPF and train a load forecasting and reserve sizing model in the context of minimal operation cost optimization as described in https://arxiv.org/pdf/2102.13273.
+
+### Hybrid storage
+
+Decision-focused dispatch for a portfolio of three co-managed hybrid renewable + battery projects (two wind, one solar) on ERCOT hourly data. For each project and each hour of a 24-hour horizon, a predictive model forecasts generation `G` and price `π`; a two-stage LP (Plan/Assess) then chooses the per-hour charge/discharge schedule subject to cyclic state-of-charge, power, and cycle limits. The experiment compares a least-squares (MSE-pretrained) predictor against an ADL predictor trained with `GradientMPIMode`, with a perfect-foresight Oracle as the upper bound, and demonstrates how a single `input_output_map` mechanism supports three predictive-model archetypes selected via `model_type` in `config.jl`:
+
+- `:uni` — one network mapping all features to all targets (presented as **single** in the slide deck).
+- `:type` — separate networks for generation and price, each seeing only its relevant features (**split**).
+- `:many` — one generation network and one price network, reused per project (**shared**).
+
+`main.jl` runs the LS baseline, the ADL training, and evaluation for all three archetypes; `eda.jl` produces the post-analysis plots and tables. The `presentation/` folder contains the slide deck for this case study.
 
 ## Deploying on AWS from Your Local Machine
 

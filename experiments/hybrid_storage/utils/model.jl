@@ -1,5 +1,4 @@
 # ADL.Model for the hybrid_storage LP: 3 projects, 24-hour horizon, cyclic SoC.
-# Variables and constraints match PLAN.md §4.
 
 ADL = ApplicationDrivenLearning
 
