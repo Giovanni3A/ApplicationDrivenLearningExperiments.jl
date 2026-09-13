@@ -24,14 +24,7 @@ include("utils/model.jl")
 include("utils/pretrain.jl")
 
 # least-squares model
-pred_model = ADL.PredictiveModel(
-    nns, 
-    input_output_map 
-)
-ADL.set_forecast_model(
-    model,
-    pred_model
-)
+ADL.set_forecast_model(model, forecast_units(nns))
 
 ls_pred = model.forecast(X_train')'
 ls_mse = sum((ls_pred' .- Y_train') .^2, dims=1) |> mean
@@ -101,7 +94,7 @@ if (gradient_mode | neldermead_mode)
         # store models states
         JLD2.jldsave(
             final_model_state; 
-            state=Flux.state(model.forecast.networks)
+            state=Flux.state([u.architecture for u in model.forecast.units])
         )
     end
     

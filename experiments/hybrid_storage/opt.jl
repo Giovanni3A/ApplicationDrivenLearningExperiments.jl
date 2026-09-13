@@ -25,15 +25,10 @@ pretrain = false
 include("utils/pretrain.jl")
 include("utils/model.jl")
 
-if model_type == :uni
-    pred_model = ApplicationDrivenLearning.PredictiveModel(nn)
-elseif model_type in (:type, :many)
-    pred_model =
-        ApplicationDrivenLearning.PredictiveModel(nns, input_output_map)
-else
-    error("model_type $model_type not implemented")
-end
-ApplicationDrivenLearning.set_forecast_model(model, pred_model)
+ApplicationDrivenLearning.set_forecast_model(
+    model,
+    forecast_units(model_type == :uni ? nn : nns),
+)
 
 time1 = time()
 sol = ApplicationDrivenLearning.train!(
@@ -64,6 +59,6 @@ if JQM.is_controller_process()
     println("Gradient-mode predictor test RMSE: G = $gd_G_rmse, Pi = $gd_Pi_rmse")
     println("Gradient-mode predictor test Cost: $gd_cost")
 
-    JLD2.jldsave(final_model_state; state = Flux.state(model.forecast.networks))
+    JLD2.jldsave(final_model_state; state = Flux.state([u.architecture for u in model.forecast.units]))
     println("Final state saved to $final_model_state")
 end
