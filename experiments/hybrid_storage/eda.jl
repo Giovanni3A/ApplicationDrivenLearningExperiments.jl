@@ -17,7 +17,6 @@ import Plots
 using StatsPlots: groupedbar
 
 import ApplicationDrivenLearning
-import ParametricOptInterface as POI
 import MathOptInterface as MOI
 
 include("config.jl")
@@ -547,7 +546,7 @@ println("Total distinct t to re-solve: $(length(shortlist_ts)) (3 archs × 2 sta
 
 println("\n========== Section 4B: LP re-solve on shortlist ==========\n")
 
-# Build per-arch PredictiveModel from saved states. We mirror the network
+# Build per-arch forecast units from saved states. We mirror the network
 # structures in pretrain_{uni,type,many}.jl exactly so loadmodel! finds a match.
 
 function _build_uni_chain()
@@ -614,28 +613,30 @@ function _build_many_nns()
     ]
 end
 
-function _build_iom(arch)
-    iom = Vector{Dict{Vector{Int64},Vector{ADL.Forecast}}}()
-    if arch == :type
-        push!(
-            iom,
-            Dict(g_feat_idx => vec([G_fc[h, p] for h = 1:H, p = 1:N_PROJ])),
+function _forecast_units(arch, nets)
+    if arch == :uni
+        # one network over the whole input row, emitting every forecast variable
+        return [ADL.ForecastModel(architecture = nets, outputs = model.forecast_vars)]
+    elseif arch == :type
+        return [
+            ADL.ForecastModel(
+                inputs = g_feat_idx,
+                architecture = nets[1],
+                outputs = vec([G_fc[h, p] for h = 1:H, p = 1:N_PROJ]),
+            ),
+            ADL.ForecastModel(
+                inputs = pi_feat_idx,
+                architecture = nets[2],
+                outputs = vec([pi_fc[h, p] for h = 1:H, p = 1:N_PROJ]),
+            ),
+        ]
+    else
+        error(
+            ":many applies one shared subnet once per project, which a vector " *
+            "of ForecastModel units cannot express: a unit reads a single input " *
+            "group, and two units may not share an architecture object.",
         )
-        push!(
-            iom,
-            Dict(pi_feat_idx => vec([pi_fc[h, p] for h = 1:H, p = 1:N_PROJ])),
-        )
-    elseif arch == :many
-        g_dict = Dict{Vector{Int64},Vector{ADL.Forecast}}()
-        pi_dict = Dict{Vector{Int64},Vector{ADL.Forecast}}()
-        for p = 1:N_PROJ
-            g_dict[g_feat_idx_per_proj[p]] = vec(G_fc[:, p])
-            pi_dict[pi_feat_idx_per_proj[p]] = vec(pi_fc[:, p])
-        end
-        push!(iom, g_dict)
-        push!(iom, pi_dict)
     end
-    return iom
 end
 
 function _load_pred_model(arch, stage)
@@ -643,11 +644,11 @@ function _load_pred_model(arch, stage)
     if arch == :uni
         nn = _build_uni_chain()
         Flux.loadmodel!(nn, st isa AbstractVector ? st[1] : st)
-        return ADL.PredictiveModel(nn)
+        return _forecast_units(arch, nn)
     else
         nns = arch == :type ? _build_type_nns() : _build_many_nns()
         Flux.loadmodel!(nns, st)
-        return ADL.PredictiveModel(nns, _build_iom(arch))
+        return _forecast_units(arch, nns)
     end
 end
 
@@ -655,17 +656,12 @@ end
 # Returns (assess_cost, plan_charge_vals, plan_discharge_vals, assess_sale_vals, assess_soc_vals).
 function _solve_single_sample(t::Int)
     yhat = model.forecast(X_test[t, :])
-    MOI.set.(
-        model.plan,
-        POI.ParameterValue(),
-        model.plan_forecast_params,
-        yhat,
-    )
+    set_parameter_value.(model.plan_forecast_params, yhat)
     JuMP.optimize!(ADL.Plan(model))
     pc = JuMP.value.(plan_charge)
     pd = JuMP.value.(plan_discharge)
 
-    y_actual = ADL.dict_to_var_indexed_matrix(Y_dict_test, model.forecast_vars)[t, :]
+    y_actual = ADL._dict_to_var_indexed_matrix(Y_dict_test, model.forecast_vars)[t, :]
     fix.(ADL.assess_forecast_vars(model), y_actual; force = true)
     set_normalized_rhs.(
         model.assess[:assess_policy_fix],

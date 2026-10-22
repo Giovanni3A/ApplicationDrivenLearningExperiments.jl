@@ -72,7 +72,13 @@ nn = Flux.Chain(
 )
 Flux.params(nn)[1][1, :] .= θ[1:end-1]
 Flux.params(nn)[2][1] = θ[end]
-ApplicationDrivenLearning.set_forecast_model(model, nn)
+ApplicationDrivenLearning.set_forecast_model(
+    model,
+    ApplicationDrivenLearning.ForecastModel(
+        architecture = nn,
+        outputs = collect(d),
+    ),
+)
 
 # least-squares model prediction and cost
 yhat_ls = model.forecast(X')'

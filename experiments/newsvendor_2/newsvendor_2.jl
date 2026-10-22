@@ -114,18 +114,16 @@ for i=1:I
     Flux.params(nns[i])[1][1, :] .= θ[1:end-1, i]
     Flux.params(nns[i])[2][1] = θ[end, i]
 end
-input_output_map = [
-    Dict(
-        collect((i-1)*p+1:i*p) => [d[i]]
-    )
-    for i=1:I
-]
 ApplicationDrivenLearning.set_forecast_model(
     model,
-    ApplicationDrivenLearning.PredictiveModel(
-        deepcopy(nns), 
-        input_output_map
-    )
+    [
+        ApplicationDrivenLearning.ForecastModel(
+            inputs = collect((i-1)*p+1:i*p),
+            architecture = deepcopy(nns[i]),
+            outputs = [d[i]],
+        )
+        for i = 1:I
+    ],
 )
 
 # least-squares model prediction and cost
