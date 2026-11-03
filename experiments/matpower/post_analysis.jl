@@ -21,6 +21,7 @@ include("config.jl")
 pretrain = false
 gradient_mode = false
 neldermead_mode = false
+gradient_serial_mode = false
 
 include("utils/struct.jl")
 include("utils/data.jl")
@@ -29,6 +30,7 @@ include("utils/pretrain.jl")
 
 gradient_model_state = joinpath(result_path, "model_state_gd.jld2")
 neldermead_model_state = joinpath(result_path, "model_state_nm.jld2")
+gradient_serial_model_state = joinpath(result_path, "model_state_gd_serial.jld2")
 
 ###########################################################################
 
@@ -65,6 +67,18 @@ else
     nm_cost_train = zeros(size(Y_train, 1))
     nm_pred_test = zeros(size(Y_test))
     nm_cost_test = zeros(size(Y_test, 1))
+end
+
+# get serial GD model, if run_mode = 4 has produced one
+gd_serial_condition = isfile(gradient_serial_model_state)
+if gd_serial_condition
+    models_state = JLD2.load(gradient_serial_model_state, "state")
+    Flux.loadmodel!(nns, models_state);
+    ADL.set_forecast_model(model, forecast_units(nns))
+    gds_pred_train = model.forecast(X_train')'
+    gds_cost_train = ADL.compute_cost(model, X_train, Y_dict_train, false, false)
+    gds_pred_test = model.forecast(X_test')'
+    gds_cost_test = ADL.compute_cost(model, X_test, Y_dict_test, false, false)
 end
 
 # get optimal decision
@@ -115,6 +129,15 @@ if nm_condition
         mean(sum((nm_pred_test' .- Y_test') .^2, dims=1)),
     ))
 end
+if gd_serial_condition
+    push!(dataframe, (
+        "GD_SERIAL",
+        mean(gds_cost_train),
+        mean(gds_cost_test),
+        mean(sum((gds_pred_train' .- Y_train') .^2, dims=1)),
+        mean(sum((gds_pred_test' .- Y_test') .^2, dims=1)),
+    ))
+end
 
 push!(dataframe, (
     "OPTIMAL",
@@ -132,6 +155,9 @@ regret_df = DataFrame(:model => ["LS", "GD", "NM"], :regret => [
     mean(gd_cost_test) - mean(opt_cost_test),
     mean(nm_cost_test) - mean(opt_cost_test)
 ])
+if gd_serial_condition
+    push!(regret_df, ("GD_SERIAL", mean(gds_cost_test) - mean(opt_cost_test)))
+end
 println("Regret analysis")
 println(regret_df)
 CSV.write(joinpath(result_path, "regret.csv"), regret_df)

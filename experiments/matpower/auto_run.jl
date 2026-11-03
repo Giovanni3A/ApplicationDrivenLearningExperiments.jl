@@ -54,6 +54,18 @@ for i=1:size(dotm_files, 1)
     end
     JQM.mpiexec(exe -> run(`$exe -n $(N_PROCS) $(Base.julia_cmd()) --project=$(Base.active_project()) $(joinpath(@__DIR__, "main.jl"))`))
 
+    ## serial gradient
+    open(
+        joinpath(@__DIR__, "config.jl"),
+        "r+"
+    ) do file
+        content = read(file, String)
+        new_content = replace(content, r"run_mode = \d" => "run_mode = 4")
+        seek(file, 0)
+        write(file, new_content)
+    end
+    run(`$(Base.julia_cmd()) --project=$(Base.active_project()) $(joinpath(@__DIR__, "main.jl"))`)
+
     ## nelder-mead
     if (N_HIDDEN_LAYERS == 0) && (N_DEMANDS <= 100)
         open(

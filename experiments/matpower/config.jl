@@ -1,10 +1,11 @@
 # this config file is used to set the parameters for the experiment
 
-run_mode = 1  # 1: pretrain, 2: gradient, 3: neldermead
+run_mode = 1  # 1: pretrain, 2: gradient, 3: neldermead, 4: serial gradient
 
 pretrain = false
 gradient_mode = false
 neldermead_mode = false
+gradient_serial_mode = false
 
 if run_mode == 1
     pretrain = true
@@ -15,6 +16,9 @@ elseif run_mode == 2
 elseif run_mode == 3
     neldermead_mode = true
     println("NelderMead mode")
+elseif run_mode == 4
+    gradient_serial_mode = true
+    println("Serial gradient mode")
 else
     error("Invalid option")
 end
@@ -63,7 +67,9 @@ if gradient_mode
     final_model_state = joinpath(result_path, "model_state_gd.jld2")
 elseif neldermead_mode
     final_model_state = joinpath(result_path, "model_state_nm.jld2")
-else 
+elseif gradient_serial_mode
+    final_model_state = joinpath(result_path, "model_state_gd_serial.jld2")
+else
     final_model_state = nothing
 end
 
