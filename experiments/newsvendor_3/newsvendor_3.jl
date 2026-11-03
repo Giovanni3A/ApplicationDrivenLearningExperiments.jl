@@ -86,15 +86,19 @@ for itry = 1:n_tries
             end
             time_ls = time() - t0
             
-            # set forecast model
-            input_output_maps = [
-                Dict(collect((i-1)*p+1:i*p) => [model.forecast_vars[i]])
-                for i=1:I
-            ]
-            forecaster = ApplicationDrivenLearning.PredictiveModel(
-                deepcopy(ls_nns), input_output_maps
-            )
-            ApplicationDrivenLearning.set_forecast_model(model, forecaster)
+            # set forecast model - one network per newsvendor, reading that
+            # newsvendor's own lags. The networks are copied here so that the
+            # caller's `ls_nns` keeps the least-squares fit across the reruns below
+            forecast_units =
+                nets -> [
+                    ApplicationDrivenLearning.ForecastModel(
+                        inputs = collect((i-1)*p+1:i*p),
+                        architecture = deepcopy(nets[i]),
+                        outputs = [model.forecast_vars[i]],
+                    )
+                    for i = 1:I
+                ]
+            ApplicationDrivenLearning.set_forecast_model(model, forecast_units(ls_nns))
 
             # ls prediction
             yhat_ls_train = model.forecast(X_train')'
@@ -108,14 +112,12 @@ for itry = 1:n_tries
             if (n_hidden_layers == 0) && (I < 300)
                 # set forecast model without relu
                 nns_without_activation = [
-                    Flux.Chain([l for l in nn if ApplicationDrivenLearning.has_params(l)]...)
+                    Flux.Chain([l for l in nn if ApplicationDrivenLearning._has_params(l)]...)
                     for nn in ls_nns
                 ]
                 ApplicationDrivenLearning.set_forecast_model(
-                    model, 
-                    ApplicationDrivenLearning.PredictiveModel(
-                        deepcopy(nns_without_activation), input_output_maps
-                    )
+                    model,
+                    forecast_units(nns_without_activation),
                 )
                 t0 = time()
                 bl_sol = ApplicationDrivenLearning.train!(
@@ -127,16 +129,14 @@ for itry = 1:n_tries
                     )
                 )
                 # add relu activation again
-                if !ApplicationDrivenLearning.has_params(ls_nns[1][end])
+                if !ApplicationDrivenLearning._has_params(ls_nns[1][end])
                     nns_with_activation = [
-                        Flux.Chain(nn..., Flux.relu)
-                        for nn in model.forecast.networks
+                        Flux.Chain(u.architecture..., Flux.relu)
+                        for u in model.forecast.units
                     ]
                     ApplicationDrivenLearning.set_forecast_model(
-                        model, 
-                        ApplicationDrivenLearning.PredictiveModel(
-                            deepcopy(nns_with_activation), input_output_maps
-                        )
+                        model,
+                        forecast_units(nns_with_activation),
                     )
                 end
 
@@ -160,10 +160,8 @@ for itry = 1:n_tries
             # train with nelder mead
             if (n_hidden_layers == 0) && (n_params <= max_params_nelder_mead)
                 ApplicationDrivenLearning.set_forecast_model(
-                    model, 
-                    ApplicationDrivenLearning.PredictiveModel(
-                        deepcopy(ls_nns), input_output_maps
-                    )
+                    model,
+                    forecast_units(ls_nns),
                 )
                 t0 = time()
                 nm_sol = ApplicationDrivenLearning.train!(
@@ -196,10 +194,8 @@ for itry = 1:n_tries
 
             # train with gradient descent
             ApplicationDrivenLearning.set_forecast_model(
-                model, 
-                ApplicationDrivenLearning.PredictiveModel(
-                    deepcopy(ls_nns), input_output_maps
-                )
+                model,
+                forecast_units(ls_nns),
             )
             
             # define learning rate

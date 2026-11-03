@@ -27,17 +27,15 @@ function build_pred_model_from(path)
     state = JLD2.load(path, "state")
     if model_type == :uni
         Flux.loadmodel!(nn, state isa AbstractVector ? state[1] : state)
-        return ApplicationDrivenLearning.PredictiveModel(nn)
-    elseif model_type in (:type, :many)
-        Flux.loadmodel!(nns, state)
-        return ApplicationDrivenLearning.PredictiveModel(nns, input_output_map)
+        return forecast_units(nn)
     else
-        error("model_type $model_type not implemented")
+        Flux.loadmodel!(nns, state)
+        return forecast_units(nns)
     end
 end
 
 function compute_assess_metrics(model, X, Y_dict)
-    Y_matrix = ADL.dict_to_var_indexed_matrix(Y_dict, model.forecast_vars)
+    Y_matrix = ADL._dict_to_var_indexed_matrix(Y_dict, model.forecast_vars)
     # Profit: π_actual · assess_sale (signed; combines sale revenue when assess_sale > 0
     # with forced-buy cost when assess_sale < 0 due to locked charge exceeding G_actual).
     # Equivalent to −Cost / N_PROJ for the per-(t, p) breakdown.
@@ -51,7 +49,7 @@ function compute_assess_metrics(model, X, Y_dict)
             println("Computing assess metrics for sample $t / $(size(X, 1))")
         end
         y = Y_matrix[t, :]
-        ADL.compute_single_step_cost(
+        ADL._compute_single_step_cost(
             model,
             y,
             model.forecast(X[t, :])
@@ -75,7 +73,7 @@ end
 #   - Oracle vs LS: maximum forecast-quality improvement available.
 #   - Oracle vs ADL: how much ADL is leaving on the table.
 function compute_oracle_metrics(model, X, Y_dict)
-    Y_matrix = ADL.dict_to_var_indexed_matrix(Y_dict, model.forecast_vars)
+    Y_matrix = ADL._dict_to_var_indexed_matrix(Y_dict, model.forecast_vars)
     profit = Matrix{Float64}(undef, size(X, 1), N_PROJ)
     arbitrage = Matrix{Float64}(undef, size(X, 1), N_PROJ)
     for t in 1:size(X, 1)
@@ -84,7 +82,7 @@ function compute_oracle_metrics(model, X, Y_dict)
         end
         y = Y_matrix[t, :]
         # Pass actuals as both true Y and forecast yhat → planner has perfect info.
-        ADL.compute_single_step_cost(model, y, y)
+        ADL._compute_single_step_cost(model, y, y)
         pi_actual = deflatten(y)[:, 2, :]
         sale_vals = JuMP.value.(ADL.Assess(model)[:assess_sale])
         discharge_vals = JuMP.value.([discharge[h, p].assess for h in 1:H, p in 1:N_PROJ])

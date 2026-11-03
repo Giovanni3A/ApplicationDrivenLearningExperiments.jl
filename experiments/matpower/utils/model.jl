@@ -138,7 +138,7 @@ cost_final = cost_gen + cost_def + cost_spl
 
 set_optimizer(model, Gurobi.Optimizer)
 set_silent(model)
-ADL.build(model)
+ADL._build(model)
 
 # Y data as dict
 Y_dict_train = Dict(
@@ -154,9 +154,26 @@ for i=1:pd.n_zones
     Y_dict_test[res_dn[i]] = Y_test[:,pd.n_demand+pd.n_zones+i]
 end
 
-# create input_output_map for predictive model
-input_output_map = Vector{Dict{Vector{Int64}, Vector{ApplicationDrivenLearning.Forecast}}}()
-for i=1:pd.n_demand
-    push!(input_output_map, Dict(collect(lags*(i-1)+1:lags*i) => [demand[i]]))
+# forecast units for the predictive model: one network per demand, reading that
+# demand's own lags, then one reading the reserve driver for every zone.
+# Takes the networks as an argument because callers reload their weights from a
+# saved state before assembling the forecast.
+function forecast_units(nets)
+    units = [
+        ADL.ForecastModel(
+            inputs = collect(lags*(i-1)+1:lags*i),
+            architecture = nets[i],
+            outputs = [demand[i]],
+        )
+        for i = 1:pd.n_demand
+    ]
+    push!(
+        units,
+        ADL.ForecastModel(
+            inputs = [lags*pd.n_demand+1],
+            architecture = nets[end],
+            outputs = vcat(res_up, res_dn),
+        ),
+    )
+    return units
 end
-push!(input_output_map, Dict([lags*pd.n_demand+1] => vcat(res_up, res_dn)))

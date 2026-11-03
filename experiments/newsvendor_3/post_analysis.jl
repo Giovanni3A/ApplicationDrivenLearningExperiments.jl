@@ -44,7 +44,7 @@ plt_df = stack(
 )
 plt_df = filter(:value => !isnan, plt_df)
 sort!(plt_df, [:I])
-transform!(plt_df, :I => ByRow(string) => :I)
+transform!(plt_df, :I => ByRow(i -> string(Int(i))) => :I)
 plt_df.model_name = [Dict(
     "improve_bl_train" => "Bilevel",
     "improve_nm_train" => "Nelder-Mead",
@@ -75,7 +75,7 @@ plt_df = stack(
 )
 plt_df = filter(:value => !isnan, plt_df)
 sort!(plt_df, [:I])
-transform!(plt_df, :I => ByRow(string) => :I)
+transform!(plt_df, :I => ByRow(i -> string(Int(i))) => :I)
 plt_df.model_name = [Dict(
     "improve_bl_test" => "Bilevel",
     "improve_nm_test" => "Nelder-Mead",

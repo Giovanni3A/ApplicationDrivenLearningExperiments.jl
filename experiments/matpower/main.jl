@@ -24,14 +24,7 @@ include("utils/model.jl")
 include("utils/pretrain.jl")
 
 # least-squares model
-pred_model = ADL.PredictiveModel(
-    nns, 
-    input_output_map 
-)
-ADL.set_forecast_model(
-    model,
-    pred_model
-)
+ADL.set_forecast_model(model, forecast_units(nns))
 
 ls_pred = model.forecast(X_train')'
 ls_mse = sum((ls_pred' .- Y_train') .^2, dims=1) |> mean
@@ -92,6 +85,37 @@ elseif neldermead_mode
         println("OPT-NM MSE: $nm_mse")
         println("OPT-NM: $nm_cost")
     end
+
+elseif gradient_serial_mode
+    # gradient mode on the serial backend, same settings as the MPI run
+    time1 = time()
+    sol = ApplicationDrivenLearning.train!(
+        model,
+        X_train,
+        Y_dict_train,
+        ApplicationDrivenLearning.Options(
+            ApplicationDrivenLearning.GradientMode;
+            rule=Flux.Adam(LEARNING_RATE),
+            epochs=N_EPOCHS,
+            compute_cost_every=COMPUTE_EVERY,
+            batch_size=BATCH_SIZE,
+            time_limit=TIME_LIMIT,
+        )
+    )
+    println("GradientMode (serial) training time: $(time() - time1)")
+
+    gd_pred = model.forecast(X_train')'
+    gd_mse = sum((gd_pred' .- Y_train') .^2, dims=1) |> mean
+    gd_cost = ADL.compute_cost(model, X_train, Y_dict_train)
+
+    println("OPT-GD-SERIAL MSE: $gd_mse")
+    println("OPT-GD-SERIAL: $gd_cost")
+
+    # no MPI here, so the state is stored without the controller check below
+    JLD2.jldsave(
+        final_model_state;
+        state=Flux.state([u.architecture for u in model.forecast.units])
+    )
 else
     println("Optimization mode not defined. Skipping optimization.")
 end
@@ -101,7 +125,7 @@ if (gradient_mode | neldermead_mode)
         # store models states
         JLD2.jldsave(
             final_model_state; 
-            state=Flux.state(model.forecast.networks)
+            state=Flux.state([u.architecture for u in model.forecast.units])
         )
     end
     

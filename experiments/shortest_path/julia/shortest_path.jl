@@ -151,7 +151,13 @@ reg = pretrain_model(x_train, c_train)
 
 # set forecast model
 optmodel = get_optmodel(c_train);
-ApplicationDrivenLearning.set_forecast_model(optmodel, reg);
+ApplicationDrivenLearning.set_forecast_model(
+    optmodel,
+    ApplicationDrivenLearning.ForecastModel(
+        architecture = reg,
+        outputs = optmodel.forecast_vars,
+    ),
+);
 
 # y dicts
 y_train = Dict(f => c_train[:, i] for (i, f) in enumerate(optmodel.forecast_vars))
@@ -180,7 +186,7 @@ costs, preds, solutions = get_solution(optmodel, x_test, y_test)
 opt_costs = zeros(size(c_test, 1))
 for i=1:size(x_test, 1)
     y = c_test[i, :]
-    opt_costs[i] = ApplicationDrivenLearning.compute_single_step_cost(optmodel, y, y)
+    opt_costs[i] = ApplicationDrivenLearning._compute_single_step_cost(optmodel, y, y)
 end
 test_cost_df = DataFrame(
     :test_cost => costs, 

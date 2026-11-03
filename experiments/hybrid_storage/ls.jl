@@ -21,15 +21,10 @@ pretrain = true
 include("utils/pretrain.jl")
 include("utils/model.jl")
 
-if model_type == :uni
-    pred_model = ApplicationDrivenLearning.PredictiveModel(nn)
-elseif model_type in (:type, :many)
-    pred_model =
-        ApplicationDrivenLearning.PredictiveModel(nns, input_output_map)
-else
-    error("model_type $model_type not implemented")
-end
-ApplicationDrivenLearning.set_forecast_model(model, pred_model)
+ApplicationDrivenLearning.set_forecast_model(
+    model,
+    forecast_units(model_type == :uni ? nn : nns),
+)
 
 # Baseline metrics from the pretrained predictor.
 ls_pred_train = deflatten_model_forecast(model.forecast(X_train')', model.forecast_vars)

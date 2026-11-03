@@ -21,6 +21,7 @@ include("config.jl")
 pretrain = false
 gradient_mode = false
 neldermead_mode = false
+gradient_serial_mode = false
 
 include("utils/struct.jl")
 include("utils/data.jl")
@@ -29,20 +30,14 @@ include("utils/pretrain.jl")
 
 gradient_model_state = joinpath(result_path, "model_state_gd.jld2")
 neldermead_model_state = joinpath(result_path, "model_state_nm.jld2")
+gradient_serial_model_state = joinpath(result_path, "model_state_gd_serial.jld2")
 
 ###########################################################################
 
 # get LS model
 models_state = JLD2.load(pretrained_model_state, "state")
 Flux.loadmodel!(nns, models_state);
-pred_model = ADL.PredictiveModel(
-    nns, 
-    input_output_map
-)
-ADL.set_forecast_model(
-    model,
-    pred_model
-)
+ADL.set_forecast_model(model, forecast_units(nns))
 ls_pred_train = model.forecast(X_train')'
 ls_cost_train = ADL.compute_cost(model, X_train, Y_dict_train, false, false)
 ls_pred_test = model.forecast(X_test')'
@@ -51,14 +46,7 @@ ls_cost_test = ADL.compute_cost(model, X_test, Y_dict_test, false, false)
 # get GD model
 models_state = JLD2.load(gradient_model_state, "state")
 Flux.loadmodel!(nns, models_state);
-pred_model = ADL.PredictiveModel(
-    nns, 
-    input_output_map
-)
-ADL.set_forecast_model(
-    model,
-    pred_model
-)
+ADL.set_forecast_model(model, forecast_units(nns))
 gd_pred_train = model.forecast(X_train')'
 gd_cost_train = ADL.compute_cost(model, X_train, Y_dict_train, false, false)
 gd_pred_test = model.forecast(X_test')'
@@ -69,14 +57,7 @@ nm_condition = (N_HIDDEN_LAYERS == 0) && (N_DEMANDS <= 100)
 if nm_condition
     models_state = JLD2.load(neldermead_model_state, "state")
     Flux.loadmodel!(nns, models_state);
-    pred_model = ADL.PredictiveModel(
-        nns, 
-        input_output_map
-    )
-    ADL.set_forecast_model(
-        model,
-        pred_model
-    )
+    ADL.set_forecast_model(model, forecast_units(nns))
     nm_pred_train = model.forecast(X_train')'
     nm_cost_train = ADL.compute_cost(model, X_train, Y_dict_train, false, false)
     nm_pred_test = model.forecast(X_test')'
@@ -88,13 +69,25 @@ else
     nm_cost_test = zeros(size(Y_test, 1))
 end
 
+# get serial GD model, if run_mode = 4 has produced one
+gd_serial_condition = isfile(gradient_serial_model_state)
+if gd_serial_condition
+    models_state = JLD2.load(gradient_serial_model_state, "state")
+    Flux.loadmodel!(nns, models_state);
+    ADL.set_forecast_model(model, forecast_units(nns))
+    gds_pred_train = model.forecast(X_train')'
+    gds_cost_train = ADL.compute_cost(model, X_train, Y_dict_train, false, false)
+    gds_pred_test = model.forecast(X_test')'
+    gds_cost_test = ADL.compute_cost(model, X_test, Y_dict_test, false, false)
+end
+
 # get optimal decision
 opt_cost_train = []
 for t=1:TRAIN_SIZE
     t_y = Y_train[t, :]
     push!(
         opt_cost_train,
-        ADL.compute_single_step_cost(model, t_y, t_y)
+        ADL._compute_single_step_cost(model, t_y, t_y)
     )
 end
 opt_cost_test = []
@@ -102,7 +95,7 @@ for t=1:TEST_SIZE
     t_y = Y_test[t, :]
     push!(
         opt_cost_test,
-        ADL.compute_single_step_cost(model, t_y, t_y)
+        ADL._compute_single_step_cost(model, t_y, t_y)
     )
 end
 
@@ -136,6 +129,15 @@ if nm_condition
         mean(sum((nm_pred_test' .- Y_test') .^2, dims=1)),
     ))
 end
+if gd_serial_condition
+    push!(dataframe, (
+        "GD_SERIAL",
+        mean(gds_cost_train),
+        mean(gds_cost_test),
+        mean(sum((gds_pred_train' .- Y_train') .^2, dims=1)),
+        mean(sum((gds_pred_test' .- Y_test') .^2, dims=1)),
+    ))
+end
 
 push!(dataframe, (
     "OPTIMAL",
@@ -153,6 +155,9 @@ regret_df = DataFrame(:model => ["LS", "GD", "NM"], :regret => [
     mean(gd_cost_test) - mean(opt_cost_test),
     mean(nm_cost_test) - mean(opt_cost_test)
 ])
+if gd_serial_condition
+    push!(regret_df, ("GD_SERIAL", mean(gds_cost_test) - mean(opt_cost_test)))
+end
 println("Regret analysis")
 println(regret_df)
 CSV.write(joinpath(result_path, "regret.csv"), regret_df)
@@ -203,14 +208,7 @@ savefig(fig2, joinpath(imgs_path, "costs.png"))
 # detail ls costs
 models_state = JLD2.load(pretrained_model_state, "state")
 Flux.loadmodel!(nns, models_state);
-pred_model = ADL.PredictiveModel(
-    nns, 
-    input_output_map
-)
-ADL.set_forecast_model(
-    model,
-    pred_model
-)
+ADL.set_forecast_model(model, forecast_units(nns))
 dataframe = DataFrame(
     data=String[],
     t=Int64[],

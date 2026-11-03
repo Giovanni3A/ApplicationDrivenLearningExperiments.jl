@@ -159,7 +159,7 @@ LAMBDA = 0.01
 
 set_optimizer(model, Gurobi.Optimizer)
 set_silent(model)
-ADL.build(model)
+ADL._build(model)
 
 # --- Y_dict: map each Forecast variable to its column of Y_{train,test} ---
 Y_dict_train = Dict{ADL.Forecast,Vector{Float32}}()
@@ -173,30 +173,41 @@ for (pidx, pid) in enumerate(PROJECT_IDS)
     end
 end
 
-# --- input_output_map for multi-network archetypes ---
+# --- forecast units per archetype ---
 # Forecast vector order must match the corresponding network output order: column-major
 # iteration over [h, p], identical to the iteration used to build _G_TARGET_IDX / _PI_TARGET_IDX.
-input_output_map = Vector{Dict{Vector{Int64},Vector{ADL.Forecast}}}()
-if model_type == :type
-    # One Dict per network, one entry per Dict — each subnet emits all projects' targets.
-    g_forecast_vars = vec([G_fc[h, p] for h = 1:H, p = 1:N_PROJ])
-    pi_forecast_vars = vec([pi_fc[h, p] for h = 1:H, p = 1:N_PROJ])
-    push!(input_output_map, Dict(g_feat_idx => g_forecast_vars))
-    push!(input_output_map, Dict(pi_feat_idx => pi_forecast_vars))
-elseif model_type == :many
-    # One Dict per network, N_PROJ entries per Dict — the shared subnet is invoked
-    # once per project with that project's input slice and its forecast variables.
-    g_dict = Dict{Vector{Int64},Vector{ADL.Forecast}}()
-    pi_dict = Dict{Vector{Int64},Vector{ADL.Forecast}}()
-    for p = 1:N_PROJ
-        g_dict[g_feat_idx_per_proj[p]] = vec(G_fc[:, p])
-        pi_dict[pi_feat_idx_per_proj[p]] = vec(pi_fc[:, p])
+# `nets` is the single chain under :uni and the vector of subnets otherwise; it is
+# an argument because callers reload weights from a saved state before assembling.
+function forecast_units(nets)
+    if model_type == :uni
+        # one network over the whole input row, emitting every forecast variable
+        return [ADL.ForecastModel(architecture = nets, outputs = model.forecast_vars)]
+    elseif model_type == :type
+        # one unit per network - each subnet emits all projects' targets
+        return [
+            ADL.ForecastModel(
+                inputs = g_feat_idx,
+                architecture = nets[1],
+                outputs = vec([G_fc[h, p] for h = 1:H, p = 1:N_PROJ]),
+            ),
+            ADL.ForecastModel(
+                inputs = pi_feat_idx,
+                architecture = nets[2],
+                outputs = vec([pi_fc[h, p] for h = 1:H, p = 1:N_PROJ]),
+            ),
+        ]
+    elseif model_type == :many
+        error(
+            ":many applies one shared subnet once per project, which a vector " *
+            "of ForecastModel units cannot express: a unit reads a single input " *
+            "group, and two units may not share an architecture object.",
+        )
+    else
+        error("model_type $model_type not implemented")
     end
-    push!(input_output_map, g_dict)
-    push!(input_output_map, pi_dict)
 end
 
-function deflatten_model_forecast(y, forecast_vars::Vector{ADL.Forecast})
+function deflatten_model_forecast(y, forecast_vars::Vector{<:ADL.Forecast})
     # Convert vector of Forecasts (ordered by h, then pidx) into a 4D array (T x N_PROJ x 2 x N_SAMPLES).
     # We don't know the ordering, so we have to look up the forecast variables vector.
     var_to_idx = Dict(var => idx for (idx, var) in enumerate(forecast_vars))
